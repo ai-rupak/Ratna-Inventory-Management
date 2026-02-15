@@ -1,4 +1,4 @@
-const storeRepository = require('./stores.repository');
+const { prisma } = require('../../database/prisma/client');
 const { ConflictError, NotFoundError } = require('../../common/constants/errors');
 
 /**
@@ -23,7 +23,10 @@ class StoreService {
   async createStore(data) {
     // Check if code already exists
     if (data.code) {
-      const existingStore = await storeRepository.findByCode(data.code);
+      const existingStore = await prisma.store.findUnique({
+        where: { code: data.code },
+      });
+
       if (existingStore) {
         throw new ConflictError('Store code already exists');
       }
@@ -32,7 +35,10 @@ class StoreService {
       data.code = this.generateStoreCode(data.name);
     }
 
-    const store = await storeRepository.create(data);
+    const store = await prisma.store.create({
+      data,
+    });
+
     return store;
   }
 
@@ -40,7 +46,8 @@ class StoreService {
    * Get store by ID
    */
   async getStoreById(id) {
-    const store = await storeRepository.findById(id, {
+    const store = await prisma.store.findUnique({
+      where: { id },
       include: {
         users: {
           select: {
@@ -80,47 +87,80 @@ class StoreService {
       where.state = { contains: filters.state, mode: 'insensitive' };
     }
 
-    return storeRepository.paginate(page, limit, {
-      where,
-      include: {
-        _count: {
-          select: { users: true },
+    const skip = (page - 1) * limit;
+
+    const [stores, total] = await Promise.all([
+      prisma.store.findMany({
+        where,
+        include: {
+          _count: {
+            select: { users: true },
+          },
         },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.store.count({ where }),
+    ]);
+
+    return {
+      data: stores,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
       },
-      orderBy: { createdAt: 'desc' },
-    });
+    };
   }
 
   /**
    * Update store
    */
   async updateStore(id, data) {
-    const store = await storeRepository.findById(id);
+    const store = await prisma.store.findUnique({
+      where: { id },
+    });
+
     if (!store) {
       throw new NotFoundError('Store');
     }
 
     // If code is being updated, check for conflicts
     if (data.code && data.code !== store.code) {
-      const existingStore = await storeRepository.findByCode(data.code);
+      const existingStore = await prisma.store.findUnique({
+        where: { code: data.code },
+      });
+
       if (existingStore) {
         throw new ConflictError('Store code already exists');
       }
     }
 
-    return storeRepository.update(id, data);
+    return prisma.store.update({
+      where: { id },
+      data,
+    });
   }
 
   /**
    * Delete store (soft delete by setting isActive to false)
    */
   async deleteStore(id) {
-    const store = await storeRepository.findById(id);
+    const store = await prisma.store.findUnique({
+      where: { id },
+    });
+
     if (!store) {
       throw new NotFoundError('Store');
     }
 
-    await storeRepository.update(id, { isActive: false });
+    await prisma.store.update({
+      where: { id },
+      data: { isActive: false },
+    });
+
     return { message: 'Store deactivated successfully' };
   }
 
@@ -128,12 +168,19 @@ class StoreService {
    * Activate store
    */
   async activateStore(id) {
-    const store = await storeRepository.findById(id);
+    const store = await prisma.store.findUnique({
+      where: { id },
+    });
+
     if (!store) {
       throw new NotFoundError('Store');
     }
 
-    await storeRepository.update(id, { isActive: true });
+    await prisma.store.update({
+      where: { id },
+      data: { isActive: true },
+    });
+
     return { message: 'Store activated successfully' };
   }
 
@@ -141,7 +188,8 @@ class StoreService {
    * Get store statistics
    */
   async getStoreStats(id) {
-    const store = await storeRepository.findById(id, {
+    const store = await prisma.store.findUnique({
+      where: { id },
       include: {
         users: {
           where: { isActive: true },

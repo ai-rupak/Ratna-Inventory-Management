@@ -1,5 +1,5 @@
-const userRepository = require('./users.repository');
-const { hashPassword, comparePassword } = require('../../common/utils/encryption.util');
+const { prisma } = require('../../database/prisma/client');
+const { hashPassword } = require('../../common/utils/encryption.util');
 const { ConflictError, NotFoundError } = require('../../common/constants/errors');
 
 /**
@@ -11,7 +11,10 @@ class UserService {
    */
   async createUser(data) {
     // Check if email already exists
-    const existingUser = await userRepository.findByEmail(data.email);
+    const existingUser = await prisma.user.findUnique({
+      where: { email: data.email },
+    });
+
     if (existingUser) {
       throw new ConflictError('Email already exists');
     }
@@ -20,9 +23,11 @@ class UserService {
     const hashedPassword = await hashPassword(data.password);
 
     // Create user
-    const user = await userRepository.create({
-      ...data,
-      password: hashedPassword,
+    const user = await prisma.user.create({
+      data: {
+        ...data,
+        password: hashedPassword,
+      },
     });
 
     // Remove password from response
@@ -34,7 +39,8 @@ class UserService {
    * Get user by ID
    */
   async getUserById(id) {
-    const user = await userRepository.findById(id, {
+    const user = await prisma.user.findUnique({
+      where: { id },
       include: { store: true },
     });
 
@@ -64,33 +70,54 @@ class UserService {
       where.isActive = filters.isActive;
     }
 
-    const result = await userRepository.paginate(page, limit, {
-      where,
-      include: { store: true },
-      orderBy: { createdAt: 'desc' },
-    });
+    const skip = (page - 1) * limit;
+
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        include: { store: true },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.user.count({ where }),
+    ]);
 
     // Remove passwords from all users
-    result.data = result.data.map(user => {
+    const data = users.map(user => {
       const { password, ...userWithoutPassword } = user;
       return userWithoutPassword;
     });
 
-    return result;
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   /**
    * Update user
    */
   async updateUser(id, data) {
-    const user = await userRepository.findById(id);
+    const user = await prisma.user.findUnique({
+      where: { id },
+    });
+
     if (!user) {
       throw new NotFoundError('User');
     }
 
     // If email is being updated, check for conflicts
     if (data.email && data.email !== user.email) {
-      const existingUser = await userRepository.findByEmail(data.email);
+      const existingUser = await prisma.user.findUnique({
+        where: { email: data.email },
+      });
+
       if (existingUser) {
         throw new ConflictError('Email already exists');
       }
@@ -101,7 +128,11 @@ class UserService {
       data.password = await hashPassword(data.password);
     }
 
-    const updatedUser = await userRepository.update(id, data);
+    const updatedUser = await prisma.user.update({
+      where: { id },
+      data,
+    });
+
     const { password, ...userWithoutPassword } = updatedUser;
     return userWithoutPassword;
   }
@@ -110,12 +141,19 @@ class UserService {
    * Delete user (soft delete by setting isActive to false)
    */
   async deleteUser(id) {
-    const user = await userRepository.findById(id);
+    const user = await prisma.user.findUnique({
+      where: { id },
+    });
+
     if (!user) {
       throw new NotFoundError('User');
     }
 
-    await userRepository.update(id, { isActive: false });
+    await prisma.user.update({
+      where: { id },
+      data: { isActive: false },
+    });
+
     return { message: 'User deactivated successfully' };
   }
 
@@ -123,12 +161,19 @@ class UserService {
    * Activate user
    */
   async activateUser(id) {
-    const user = await userRepository.findById(id);
+    const user = await prisma.user.findUnique({
+      where: { id },
+    });
+
     if (!user) {
       throw new NotFoundError('User');
     }
 
-    await userRepository.update(id, { isActive: true });
+    await prisma.user.update({
+      where: { id },
+      data: { isActive: true },
+    });
+
     return { message: 'User activated successfully' };
   }
 
@@ -136,7 +181,9 @@ class UserService {
    * Get users by store
    */
   async getUsersByStore(storeId) {
-    const users = await userRepository.findByStore(storeId);
+    const users = await prisma.user.findMany({
+      where: { storeId },
+    });
 
     return users.map(user => {
       const { password, ...userWithoutPassword } = user;

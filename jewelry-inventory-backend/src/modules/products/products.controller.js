@@ -39,8 +39,11 @@ class ProductController {
       const filters = {
         category: req.query.category,
         purity: req.query.purity,
-        isActive: req.query.isActive === 'true',
       };
+
+      if (req.query.isActive !== undefined) {
+        filters.isActive = req.query.isActive === 'true';
+      }
 
       const result = await productService.getAllProducts(page, limit, filters);
       paginatedResponse(res, result.data, result.pagination, 'Products retrieved successfully');

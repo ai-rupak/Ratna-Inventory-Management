@@ -79,6 +79,31 @@ npm run dev
 npm start
 ```
 
+## Visualizing Data
+
+### Method 1: Prisma Studio (Recommended)
+Prisma Studio is a visual editor for your data.
+
+```bash
+npm run prisma:studio
+```
+This will open a web interface at `http://localhost:5555`.
+
+### Method 2: MongoDB Compass
+You can connect using MongoDB Compass with the connection string:
+`mongodb://localhost:27017/jewelry_inventory?replicaSet=rs0&readPreference=primary&ssl=false`
+
+### Method 3: Command Line (mongosh)
+Access the database directly via Docker:
+```bash
+docker exec -it jewelry_mongodb mongosh jewelry_inventory
+```
+Then run queries like:
+```javascript
+db.User.find()
+db.Product.find()
+```
+
 ## Default Credentials
 
 After seeding the database, you can login with:

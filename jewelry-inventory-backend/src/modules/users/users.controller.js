@@ -39,8 +39,11 @@ class UserController {
       const filters = {
         role: req.query.role,
         storeId: req.query.storeId,
-        isActive: req.query.isActive === 'true',
       };
+
+      if (req.query.isActive !== undefined) {
+        filters.isActive = req.query.isActive === 'true';
+      }
 
       const result = await userService.getAllUsers(page, limit, filters);
       paginatedResponse(res, result.data, result.pagination, 'Users retrieved successfully');

@@ -37,10 +37,13 @@ class StoreController {
       const page = parseInt(req.query.page, 10) || 1;
       const limit = parseInt(req.query.limit, 10) || 20;
       const filters = {
-        isActive: req.query.isActive === 'true',
         city: req.query.city,
         state: req.query.state,
       };
+
+      if (req.query.isActive !== undefined) {
+        filters.isActive = req.query.isActive === 'true';
+      }
 
       const result = await storeService.getAllStores(page, limit, filters);
       paginatedResponse(res, result.data, result.pagination, 'Stores retrieved successfully');

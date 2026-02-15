@@ -1,4 +1,4 @@
-const productRepository = require('./products.repository');
+const { prisma } = require('../../database/prisma/client');
 const { ConflictError, NotFoundError } = require('../../common/constants/errors');
 
 /**
@@ -21,7 +21,10 @@ class ProductService {
   async createProduct(data) {
     // Check if SKU already exists
     if (data.sku) {
-      const existingProduct = await productRepository.findBySku(data.sku);
+      const existingProduct = await prisma.product.findUnique({
+        where: { sku: data.sku },
+      });
+
       if (existingProduct) {
         throw new ConflictError('SKU already exists');
       }
@@ -30,7 +33,10 @@ class ProductService {
       data.sku = this.generateSku(data.category, data.purity);
     }
 
-    const product = await productRepository.create(data);
+    const product = await prisma.product.create({
+      data,
+    });
+
     return product;
   }
 
@@ -38,7 +44,9 @@ class ProductService {
    * Get product by ID
    */
   async getProductById(id) {
-    const product = await productRepository.findById(id);
+    const product = await prisma.product.findUnique({
+      where: { id },
+    });
 
     if (!product) {
       throw new NotFoundError('Product');
@@ -65,10 +73,27 @@ class ProductService {
       where.isActive = filters.isActive;
     }
 
-    return productRepository.paginate(page, limit, {
-      where,
-      orderBy: { createdAt: 'desc' },
-    });
+    const skip = (page - 1) * limit;
+
+    const [products, total] = await Promise.all([
+      prisma.product.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.product.count({ where }),
+    ]);
+
+    return {
+      data: products,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   /**
@@ -79,39 +104,65 @@ class ProductService {
       return [];
     }
 
-    return productRepository.search(searchTerm);
+    return prisma.product.findMany({
+      where: {
+        OR: [
+          { name: { contains: searchTerm, mode: 'insensitive' } },
+          { sku: { contains: searchTerm, mode: 'insensitive' } },
+          { category: { contains: searchTerm, mode: 'insensitive' } },
+        ],
+        isActive: true,
+      },
+      take: 20,
+    });
   }
 
   /**
    * Update product
    */
   async updateProduct(id, data) {
-    const product = await productRepository.findById(id);
+    const product = await prisma.product.findUnique({
+      where: { id },
+    });
+
     if (!product) {
       throw new NotFoundError('Product');
     }
 
     // If SKU is being updated, check for conflicts
     if (data.sku && data.sku !== product.sku) {
-      const existingProduct = await productRepository.findBySku(data.sku);
+      const existingProduct = await prisma.product.findUnique({
+        where: { sku: data.sku },
+      });
+
       if (existingProduct) {
         throw new ConflictError('SKU already exists');
       }
     }
 
-    return productRepository.update(id, data);
+    return prisma.product.update({
+      where: { id },
+      data,
+    });
   }
 
   /**
    * Delete product (soft delete by setting isActive to false)
    */
   async deleteProduct(id) {
-    const product = await productRepository.findById(id);
+    const product = await prisma.product.findUnique({
+      where: { id },
+    });
+
     if (!product) {
       throw new NotFoundError('Product');
     }
 
-    await productRepository.update(id, { isActive: false });
+    await prisma.product.update({
+      where: { id },
+      data: { isActive: false },
+    });
+
     return { message: 'Product deactivated successfully' };
   }
 
@@ -119,12 +170,19 @@ class ProductService {
    * Activate product
    */
   async activateProduct(id) {
-    const product = await productRepository.findById(id);
+    const product = await prisma.product.findUnique({
+      where: { id },
+    });
+
     if (!product) {
       throw new NotFoundError('Product');
     }
 
-    await productRepository.update(id, { isActive: true });
+    await prisma.product.update({
+      where: { id },
+      data: { isActive: true },
+    });
+
     return { message: 'Product activated successfully' };
   }
 
@@ -132,14 +190,24 @@ class ProductService {
    * Get products by category
    */
   async getProductsByCategory(category) {
-    return productRepository.findByCategory(category);
+    return prisma.product.findMany({
+      where: {
+        category: { contains: category, mode: 'insensitive' },
+        isActive: true,
+      },
+    });
   }
 
   /**
    * Get products by purity
    */
   async getProductsByPurity(purity) {
-    return productRepository.findByPurity(purity);
+    return prisma.product.findMany({
+      where: {
+        purity,
+        isActive: true,
+      },
+    });
   }
 }
 

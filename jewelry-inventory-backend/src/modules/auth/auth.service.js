@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const userRepository = require('../users/users.repository');
+const { prisma } = require('../../database/prisma/client');
 const { comparePassword } = require('../../common/utils/encryption.util');
 const { AuthenticationError, NotFoundError } = require('../../common/constants/errors');
 const { redis } = require('../../common/middleware/rate-limit.middleware');
@@ -43,7 +43,9 @@ class AuthService {
    */
   async login(email, password) {
     // Find user by email
-    const user = await userRepository.findByEmail(email);
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
 
     if (!user) {
       throw new AuthenticationError('Invalid email or password');
@@ -97,7 +99,9 @@ class AuthService {
       }
 
       // Get user
-      const user = await userRepository.findById(decoded.id);
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.id },
+      });
 
       if (!user || !user.isActive) {
         throw new AuthenticationError('User not found or inactive');
@@ -138,7 +142,8 @@ class AuthService {
    * Get current user profile
    */
   async getProfile(userId) {
-    const user = await userRepository.findById(userId, {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
       include: { store: true },
     });
 
