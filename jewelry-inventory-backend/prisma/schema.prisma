@@ -1,0 +1,267 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  STORE_ADMIN
+  CASHIER
+}
+
+enum InvoiceStatus {
+  DRAFT
+  COMPLETED
+  PARTIALLY_RETURNED
+  FULLY_RETURNED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  UPI
+  MIXED
+}
+
+enum RefundStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+enum LedgerType {
+  ALLOCATION
+  SALE
+  REFUND
+  ADJUSTMENT
+}
+
+model User {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  email     String   @unique
+  password  String
+  firstName String
+  lastName  String
+  role      Role
+  storeId   String?  @db.ObjectId
+  store     Store?   @relation(fields: [storeId], references: [id])
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([role])
+  @@index([storeId])
+}
+
+model Store {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  code      String   @unique
+  name      String
+  address   String
+  city      String
+  state     String
+  phone     String
+  isActive  Boolean  @default(true)
+  users     User[]
+  storeInventories StoreInventory[]
+  invoices  Invoice[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+model Product {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  sku               String   @unique
+  name              String
+  category          String
+  purity            String
+  hsnCode           String
+  makingChargeType  String   // PER_GRAM, FIXED, PERCENTAGE
+  makingCharge      Float
+  gstRate           Float
+  isActive          Boolean  @default(true)
+  centralInventory  CentralInventory?
+  storeInventories  StoreInventory[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([category])
+  @@index([purity])
+  @@index([isActive])
+}
+
+model CentralInventory {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  productId       String   @unique @db.ObjectId
+  product         Product  @relation(fields: [productId], references: [id])
+  totalWeight     Float
+  reservedWeight  Float    @default(0)
+  availableWeight Float
+  totalStones     Int      @default(0)
+  reservedStones  Int      @default(0)
+  stoneWeight     Float    @default(0)
+  netGoldWeight   Float
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model StoreInventory {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  storeId         String   @db.ObjectId
+  store           Store    @relation(fields: [storeId], references: [id])
+  productId       String   @db.ObjectId
+  product         Product  @relation(fields: [productId], references: [id])
+  allocatedWeight Float
+  soldWeight      Float    @default(0)
+  returnedWeight  Float    @default(0)
+  availableWeight Float
+  allocatedStones Int      @default(0)
+  soldStones      Int      @default(0)
+  returnedStones  Int      @default(0)
+  stoneWeight     Float    @default(0)
+  netGoldWeight   Float
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([storeId, productId])
+}
+
+model InventoryLedger {
+  id            String     @id @default(auto()) @map("_id") @db.ObjectId
+  type          LedgerType
+  productId     String     @db.ObjectId
+  fromStoreId   String?    @db.ObjectId
+  toStoreId     String?    @db.ObjectId
+  weight        Float
+  stoneCount    Int        @default(0)
+  stoneWeight   Float      @default(0)
+  netGoldWeight Float
+  reference     String
+  invoiceId     String?    @db.ObjectId
+  refundId      String?    @db.ObjectId
+  notes         String?
+  performedBy   String     @db.ObjectId
+  createdAt     DateTime   @default(now())
+
+  @@index([type])
+  @@index([productId])
+  @@index([fromStoreId])
+  @@index([toStoreId])
+  @@index([createdAt])
+}
+
+model Customer {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  phone     String    @unique
+  email     String?
+  address   String?
+  invoices  Invoice[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Invoice {
+  id            String        @id @default(auto()) @map("_id") @db.ObjectId
+  invoiceNumber String        @unique
+  storeId       String        @db.ObjectId
+  store         Store         @relation(fields: [storeId], references: [id])
+  customerId    String?       @db.ObjectId
+  customer      Customer?     @relation(fields: [customerId], references: [id])
+  items         InvoiceItem[]
+  subtotal      Float
+  gstAmount     Float
+  totalAmount   Float
+  paymentMethod PaymentMethod
+  status        InvoiceStatus @default(COMPLETED)
+  cashierId     String        @db.ObjectId
+  refunds       Refund[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([storeId])
+  @@index([customerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model InvoiceItem {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  invoiceId       String   @db.ObjectId
+  invoice         Invoice  @relation(fields: [invoiceId], references: [id])
+  productId       String   @db.ObjectId
+  productName     String
+  sku             String
+  purity          String
+  hsnCode         String
+  allocatedWeight Float?
+  actualWeight    Float
+  stoneCount      Int      @default(0)
+  stoneWeight     Float    @default(0)
+  netGoldWeight   Float
+  ratePerGram     Float
+  goldPrice       Float
+  makingCharge    Float
+  gstRate         Float
+  gstAmount       Float
+  totalAmount     Float
+  rfid            String   @unique
+  isReturned      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  @@index([invoiceId])
+  @@index([productId])
+}
+
+model Refund {
+  id              String       @id @default(auto()) @map("_id") @db.ObjectId
+  refundNumber    String       @unique
+  invoiceId       String       @db.ObjectId
+  invoice         Invoice      @relation(fields: [invoiceId], references: [id])
+  rfid            String
+  returnedWeight  Float
+  actualWeight    Float
+  weightDeviation Float
+  refundAmount    Float
+  status          RefundStatus @default(PENDING)
+  reason          String?
+  approvalNotes   String?
+  createdBy       String       @db.ObjectId
+  approvedBy      String?      @db.ObjectId
+  createdAt       DateTime     @default(now())
+  approvedAt      DateTime?
+  updatedAt       DateTime     @updatedAt
+
+  @@index([invoiceId])
+  @@index([rfid])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  action    String
+  entity    String
+  entityId  String
+  changes   Json?
+  userId    String   @db.ObjectId
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([entity])
+  @@index([entityId])
+  @@index([userId])
+  @@index([createdAt])
+}
