@@ -35,6 +35,24 @@ router.post(
  * @desc    Search products
  * @access  All authenticated users
  */
+/**
+ * @swagger
+ * /api/v1/products/search:
+ *   get:
+ *     summary: Search products
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Products search completed
+ */
 router.get('/search', searchProductsValidation, validate, productController.searchProducts);
 
 /**
@@ -56,6 +74,27 @@ router.get('/:id', productIdValidation, validate, productController.getProductBy
  * @desc    Update product
  * @access  SUPER_ADMIN, STORE_ADMIN
  */
+/**
+ * @swagger
+ * /api/v1/products/{id}:
+ *   patch:
+ *     summary: Update product
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UpdateProduct'
+ *     responses:
+ *       200:
+ *         description: Product updated successfully
+ */
 router.patch(
   '/:id',
   requireRole(ROLES.SUPER_ADMIN, ROLES.STORE_ADMIN),
@@ -69,6 +108,22 @@ router.patch(
  * @desc    Deactivate product
  * @access  SUPER_ADMIN
  */
+/**
+ * @swagger
+ * /api/v1/products/{id}:
+ *   delete:
+ *     summary: Deactivate product
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *     responses:
+ *       200:
+ *         description: Product deactivated successfully
+ */
 router.delete(
   '/:id',
   requireRole(ROLES.SUPER_ADMIN),
@@ -81,6 +136,22 @@ router.delete(
  * @route   PATCH /api/v1/products/:id/activate
  * @desc    Activate product
  * @access  SUPER_ADMIN
+ */
+/**
+ * @swagger
+ * /api/v1/products/{id}/activate:
+ *   patch:
+ *     summary: Activate product
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *     responses:
+ *       200:
+ *         description: Product activated successfully
  */
 router.patch(
   '/:id/activate',
