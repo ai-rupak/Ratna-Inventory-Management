@@ -58,6 +58,22 @@ app.use(`${apiPrefix}/stores`, storeRoutes);
 const productRoutes = require('./modules/products/products.routes');
 app.use(`${apiPrefix}/products`, productRoutes);
 
+// Inventory routes (Phase 2)
+const inventoryRoutes = require('./modules/inventory/inventory.routes');
+app.use(`${apiPrefix}/inventory`, inventoryRoutes);
+
+// Billing routes (Phase 2)
+const billingRoutes = require('./modules/billing/billing.routes');
+app.use(`${apiPrefix}/billing`, billingRoutes);
+
+// Refund routes (Phase 2)
+const refundRoutes = require('./modules/refunds/refunds.routes');
+app.use(`${apiPrefix}/refunds`, refundRoutes);
+
+// Audit & Reporting routes (Phase 2)
+const auditRoutes = require('./modules/audit/audit.routes');
+app.use(`${apiPrefix}/audit`, auditRoutes);
+
 // 404 handler
 app.use(notFoundHandler);
 

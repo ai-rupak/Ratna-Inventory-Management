@@ -8,9 +8,12 @@ A production-grade, centralized jewelry inventory management system backend buil
 - **User Management**: Create and manage users with different roles (Super Admin, Store Admin, Cashier)
 - **Store Management**: Manage multiple stores with centralized control
 - **Product Management**: Product catalog with SKU generation, search, and filtering
+- **Inventory Engine**: Central inventory with ACID stock allocation to stores, inter-store transfers, and full ledger trail
+- **Billing System**: POS invoice creation (ACID transaction), dynamic pricing (gold rate × weight + making charge + GST), RFID tagging per item, customer management
+- **Refund System**: RFID-based returns, weight tolerance auto-approval, manager approval workflow, stock reversal
+- **Audit & Reporting**: Audit logs, sales reports, inventory snapshots, per-store dashboard
 - **Security**: Rate limiting, input validation, error handling, distributed locking
-- **Database**: MongoDB with Prisma ORM, transaction support
-- **Caching**: Redis for session management and distributed locks
+- **Database**: MongoDB with Prisma ORM, full transaction support
 
 ## Tech Stack
 
@@ -101,7 +104,7 @@ docker exec -it jewelry_mongodb mongosh jewelry_inventory
 Then run queries like:
 ```javascript
 db.User.find()
-db.Product.find()
+db.Invoice.find()
 ```
 
 ## Default Credentials
@@ -146,6 +149,57 @@ After seeding the database, you can login with:
 - `DELETE /api/v1/products/:id` - Deactivate product
 - `PATCH /api/v1/products/:id/activate` - Activate product
 
+### Inventory (Phase 2)
+- `POST /api/v1/inventory/central` - Receive stock into central inventory *(Super Admin)*
+- `GET /api/v1/inventory/central` - List all central inventory *(Super Admin)*
+- `GET /api/v1/inventory/central/:productId` - Get central stock for a product *(Super Admin)*
+- `PATCH /api/v1/inventory/central/:productId/adjust` - Manual stock adjustment *(Super Admin)*
+- `POST /api/v1/inventory/allocate` - Allocate stock central → store *(Super Admin)*
+- `POST /api/v1/inventory/transfer` - Inter-store stock transfer *(Super Admin)*
+- `GET /api/v1/inventory/summary` - Cross-store inventory summary *(Super Admin)*
+- `GET /api/v1/inventory/store/:storeId` - View store inventory *(Store Admin, Super Admin)*
+- `GET /api/v1/inventory/ledger` - Query inventory ledger *(Super Admin)*
+- `GET /api/v1/inventory/ledger/summary` - Ledger summary by type *(Super Admin)*
+
+### Billing (Phase 2)
+- `POST /api/v1/billing/invoices` - Create invoice (POS sale) *(Cashier, Store Admin, Super Admin)*
+- `GET /api/v1/billing/invoices` - List invoices *(Cashier, Store Admin, Super Admin)*
+- `GET /api/v1/billing/invoices/:id` - Get invoice by ID *(Cashier, Store Admin, Super Admin)*
+- `PATCH /api/v1/billing/invoices/:id/cancel` - Cancel invoice *(Store Admin, Super Admin)*
+- `POST /api/v1/billing/customers` - Upsert customer by phone *(Cashier, Store Admin, Super Admin)*
+- `GET /api/v1/billing/customers` - List customers *(Store Admin, Super Admin)*
+- `GET /api/v1/billing/customers/:id` - Get customer with invoice history *(Cashier, Store Admin, Super Admin)*
+
+### Refunds (Phase 2)
+- `POST /api/v1/refunds` - Initiate refund by RFID *(Cashier, Store Admin, Super Admin)*
+- `GET /api/v1/refunds` - List refunds *(Store Admin, Super Admin)*
+- `GET /api/v1/refunds/:id` - Get refund details *(Cashier, Store Admin, Super Admin)*
+- `PATCH /api/v1/refunds/:id/approve` - Approve pending refund *(Store Admin, Super Admin)*
+- `PATCH /api/v1/refunds/:id/reject` - Reject pending refund *(Store Admin, Super Admin)*
+
+### Audit & Reporting (Phase 2)
+- `GET /api/v1/audit/logs` - Query audit logs *(Super Admin)*
+- `GET /api/v1/audit/reports/sales` - Sales report *(Store Admin, Super Admin)*
+- `GET /api/v1/audit/reports/inventory` - Inventory snapshot report *(Super Admin)*
+- `GET /api/v1/audit/reports/store/:storeId` - Store summary dashboard *(Store Admin, Super Admin)*
+
+## Pricing Formula
+
+```
+goldPrice    = netGoldWeight × goldRatePerGram
+makingCharge = (PER_GRAM | PERCENTAGE | FIXED — per product config)
+gstAmount    = (goldPrice + makingCharge) × gstRate / 100
+totalAmount  = goldPrice + makingCharge + gstAmount
+```
+
+## Refund Workflow
+
+1. Cashier scans RFID at POS → `POST /api/v1/refunds`
+2. System checks weight deviation vs. `WEIGHT_TOLERANCE_GRAMS` (default `0.01g`)
+3. Within tolerance → **auto-approved** + stock reversed immediately
+4. Exceeds tolerance → status `PENDING`, requires manager approval
+5. Manager calls `PATCH /api/v1/refunds/:id/approve` → stock reversed + ledger updated
+
 ## Project Structure
 
 ```
@@ -153,19 +207,45 @@ src/
 ├── app.js                      # Express app setup
 ├── server.js                   # Server entry point
 ├── common/                     # Shared utilities
-│   ├── middleware/            # Express middleware
-│   ├── utils/                 # Helper functions
-│   └── constants/             # Constants and enums
-├── database/                  # Database layer
-│   ├── prisma/               # Prisma client and schema
-│   ├── repositories/         # Repository pattern
-│   ├── services/             # Transaction and lock services
-│   └── seeders/              # Database seeders
-└── modules/                   # Feature modules
-    ├── auth/                 # Authentication
-    ├── users/                # User management
-    ├── stores/               # Store management
-    └── products/             # Product management
+│   ├── middleware/             # Express middleware (auth, rbac, validate, error)
+│   ├── utils/                  # Helper functions (response, encryption, logger)
+│   └── constants/              # Constants, enums, error classes
+├── database/                   # Database layer
+│   ├── prisma/                 # Prisma client setup
+│   └── seeders/                # Database seeders
+└── modules/                    # Feature modules
+    ├── auth/                   # Authentication
+    ├── users/                  # User management
+    ├── stores/                 # Store management
+    ├── products/               # Product catalog
+    ├── inventory/              # Inventory engine (Phase 2)
+    │   ├── central-inventory.service.js
+    │   ├── store-inventory.service.js
+    │   ├── allocation.service.js
+    │   ├── ledger.service.js
+    │   ├── inventory.controller.js
+    │   ├── inventory.validators.js
+    │   └── inventory.routes.js
+    ├── billing/                # Billing system (Phase 2)
+    │   ├── pricing.service.js
+    │   ├── billing.service.js
+    │   ├── invoice.service.js
+    │   ├── customer.service.js
+    │   ├── billing.controller.js
+    │   ├── billing.validators.js
+    │   └── billing.routes.js
+    ├── refunds/                # Refund system (Phase 2)
+    │   ├── refund.service.js
+    │   ├── approval.service.js
+    │   ├── refunds.controller.js
+    │   ├── refund.validators.js
+    │   └── refunds.routes.js
+    └── audit/                  # Audit & reporting (Phase 2)
+        ├── audit-log.service.js
+        ├── report.service.js
+        ├── audit.controller.js
+        ├── audit.validators.js
+        └── audit.routes.js
 ```
 
 ## Scripts
@@ -184,6 +264,11 @@ src/
 ## Environment Variables
 
 See `.env.example` for all available environment variables.
+
+Key Phase 2 variables:
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WEIGHT_TOLERANCE_GRAMS` | `0.01` | Max weight deviation (grams) for auto-approving refunds |
 
 ## License
 
