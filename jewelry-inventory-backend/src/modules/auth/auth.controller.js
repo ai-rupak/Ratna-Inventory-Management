@@ -1,5 +1,6 @@
 const authService = require('./auth.service');
 const { successResponse } = require('../../common/utils/response.util');
+const { ref } = require('joi');
 
 /**
  * Auth controller - Handle authentication HTTP requests
@@ -26,6 +27,7 @@ class AuthController {
         {
           user: result.user,
           accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
         },
         'Login successful'
       );

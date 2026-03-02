@@ -32,10 +32,15 @@ app.use((req, res, next) => {
 
 // Health check
 app.get('/health', (req, res) => {
+  const uptimeSeconds = process.uptime();
+  const hours = Math.floor(uptimeSeconds / 3600);
+  const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+  const seconds = Math.floor(uptimeSeconds % 60);
+  
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
+    uptime: `${hours}h ${minutes}m ${seconds}s`,
   });
 });
 
