@@ -265,3 +265,15 @@ model AuditLog {
   @@index([userId])
   @@index([createdAt])
 }
+
+model GoldRate {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  purity        String   // 24K, 22K, 18K, 14K
+  ratePerGram   Float
+  effectiveFrom DateTime @default(now())
+  setBy         String   @db.ObjectId
+  createdAt     DateTime @default(now())
+
+  @@index([purity])
+  @@index([effectiveFrom])
+}

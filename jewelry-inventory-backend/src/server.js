@@ -5,14 +5,39 @@ const { connectDatabase } = require('./database/prisma/client');
 
 const PORT = process.env.PORT || 3000;
 
+/**
+ * Start background job queue processors
+ */
+function startQueueProcessors() {
+  try {
+    const { pdfQueue, emailQueue, reportQueue } = require('./jobs/queues/index');
+    const processPdf = require('./jobs/processors/pdf.processor');
+    const processEmail = require('./jobs/processors/email.processor');
+    const processReport = require('./jobs/processors/report.processor');
+
+    pdfQueue.process(processPdf);
+    emailQueue.process(processEmail);
+    reportQueue.process(processReport);
+
+    logger.info('Background job processors started (PDF, Email, Report)');
+  } catch (err) {
+    // Don't crash the server if Redis is unavailable; queues degrade gracefully
+    logger.warn('Failed to start queue processors (Redis may be unavailable):', err.message);
+  }
+}
+
 async function startServer() {
   try {
     // Connect to database
     await connectDatabase();
     logger.info('Database connected successfully');
 
+    // Start queue processors
+    startQueueProcessors();
+
     // Start server
     const server = app.listen(PORT, () => {
+
       logger.info(`Server running on port ${PORT}`);
       logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`API Prefix: ${process.env.API_PREFIX || '/api/v1'}`);

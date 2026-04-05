@@ -11,7 +11,10 @@ A production-grade, centralized jewelry inventory management system backend buil
 - **Inventory Engine**: Central inventory with ACID stock allocation to stores, inter-store transfers, and full ledger trail
 - **Billing System**: POS invoice creation (ACID transaction), dynamic pricing (gold rate × weight + making charge + GST), RFID tagging per item, customer management
 - **Refund System**: RFID-based returns, weight tolerance auto-approval, manager approval workflow, stock reversal
+- **Gold Rate Management**: Live gold rate per purity (24K/22K/18K/14K) stored in DB — cashiers always fetch the current rate
 - **Audit & Reporting**: Audit logs, sales reports, inventory snapshots, per-store dashboard
+- **Background Jobs**: Bull queue workers for PDF invoice generation, email notifications, and report pre-computation
+- **API Documentation**: Interactive Swagger UI at `/api/docs`
 - **Security**: Rate limiting, input validation, error handling, distributed locking
 - **Database**: MongoDB with Prisma ORM, full transaction support
 
@@ -177,11 +180,16 @@ After seeding the database, you can login with:
 - `PATCH /api/v1/refunds/:id/approve` - Approve pending refund *(Store Admin, Super Admin)*
 - `PATCH /api/v1/refunds/:id/reject` - Reject pending refund *(Store Admin, Super Admin)*
 
-### Audit & Reporting (Phase 2)
-- `GET /api/v1/audit/logs` - Query audit logs *(Super Admin)*
-- `GET /api/v1/audit/reports/sales` - Sales report *(Store Admin, Super Admin)*
-- `GET /api/v1/audit/reports/inventory` - Inventory snapshot report *(Super Admin)*
-- `GET /api/v1/audit/reports/store/:storeId` - Store summary dashboard *(Store Admin, Super Admin)*
+### Gold Rates (Phase 3)
+- `POST /api/v1/gold-rates` - Set gold rate *(Super Admin)*
+- `GET /api/v1/gold-rates` - List rate history *(All authenticated)*
+- `GET /api/v1/gold-rates/current` - Current rates for all purities *(All authenticated)*
+- `GET /api/v1/gold-rates/current/:purity` - Current rate for a specific purity *(All authenticated)*
+
+### Documentation & Health
+- `GET /api/docs` - Interactive Swagger UI (all endpoints documented)
+- `GET /api/docs.json` - Raw OpenAPI JSON spec
+- `GET /health` - System health (DB + Redis status, uptime, memory)
 
 ## Pricing Formula
 

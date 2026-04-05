@@ -1,6 +1,7 @@
 const { prisma } = require('../../database/prisma/client');
 const pricingService = require('./pricing.service');
 const { NotFoundError, InsufficientStockError, BusinessLogicError } = require('../../common/constants/errors');
+const logger = require('../../common/utils/logger.util');
 
 /**
  * Billing Service — creates invoices inside ACID transactions
@@ -211,6 +212,36 @@ class BillingService {
 
       return invoice;
     });
+
+    // Enqueue background jobs (non-blocking, fire-and-forget)
+    this._enqueuePostInvoiceJobs(invoice).catch(err =>
+      logger.warn('Failed to enqueue post-invoice jobs:', err.message)
+    );
+
+    return invoice;
+  }
+
+  async _enqueuePostInvoiceJobs(invoice) {
+    try {
+      const { pdfQueue, emailQueue } = require('../../jobs/queues/index');
+      await pdfQueue.add({
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        storeId: invoice.storeId,
+        totalAmount: invoice.totalAmount,
+      });
+      await emailQueue.add({
+        event: 'INVOICE_CREATED',
+        payload: {
+          invoiceNumber: invoice.invoiceNumber,
+          customerName: invoice.customer?.name,
+          customerEmail: invoice.customer?.email,
+          totalAmount: invoice.totalAmount,
+        },
+      });
+    } catch (err) {
+      logger.warn('Queue unavailable, skipping post-invoice jobs:', err.message);
+    }
   }
 }
 
