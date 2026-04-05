@@ -35,7 +35,7 @@ const createRateLimiter = (options = {}) => {
  */
 const strictRateLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 requests per window
+  max: 10, // 5 requests per window
   message: {
     success: false,
     error: {
