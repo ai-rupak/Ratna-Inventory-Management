@@ -16,7 +16,7 @@ const options = {
     servers: [
       {
         url: '/api/v1',
-        description: 'API v1',
+        description: 'API Server',
       },
     ],
     components: {
@@ -86,7 +86,6 @@ const options = {
             productId: { type: 'string' },
             totalWeight: { type: 'number', example: 100.5 },
             totalStones: { type: 'integer', example: 10 },
-            stoneWeight: { type: 'number', example: 5.2 },
             notes: { type: 'string' },
           },
         },
@@ -98,17 +97,15 @@ const options = {
             storeId: { type: 'string' },
             weight: { type: 'number', example: 50.0 },
             stoneCount: { type: 'integer', example: 5 },
-            stoneWeight: { type: 'number', example: 2.5 },
             notes: { type: 'string' },
           },
         },
         // ── Billing ─────────────────────────────────────────────────────────
         CreateInvoiceRequest: {
           type: 'object',
-          required: ['storeId', 'goldRatePerGram', 'paymentMethod', 'items'],
+          required: ['storeId', 'paymentMethod', 'items'],
           properties: {
             storeId: { type: 'string' },
-            goldRatePerGram: { type: 'number', example: 6200.0 },
             paymentMethod: {
               type: 'string',
               enum: ['CASH', 'CARD', 'UPI', 'MIXED'],
@@ -125,11 +122,10 @@ const options = {
               type: 'array',
               items: {
                 type: 'object',
-                required: ['productId', 'actualWeight'],
+                required: ['productId', 'weight'],
                 properties: {
                   productId: { type: 'string' },
-                  actualWeight: { type: 'number', example: 10.52 },
-                  stoneWeight: { type: 'number', example: 1.2 },
+                  weight: { type: 'number', example: 10.52, description: 'Weight in RATI or CARAT per product\'s weightUnit' },
                   stoneCount: { type: 'integer', example: 3 },
                 },
               },
@@ -146,15 +142,7 @@ const options = {
             reason: { type: 'string', example: 'Customer changed mind' },
           },
         },
-        // ── Gold Rate ────────────────────────────────────────────────────────
-        SetGoldRateRequest: {
-          type: 'object',
-          required: ['purity', 'ratePerGram'],
-          properties: {
-            purity: { type: 'string', enum: ['24K', '22K', '18K', '14K'], example: '22K' },
-            ratePerGram: { type: 'number', example: 6200.0 },
-          },
-        },
+        // (GoldRate schema removed)
       },
     },
     security: [{ bearerAuth: [] }],
@@ -167,11 +155,11 @@ const options = {
       { name: 'Billing', description: 'POS invoicing and customer management' },
       { name: 'Refunds', description: 'RFID-based refund management' },
       { name: 'Audit', description: 'Audit logs and reports' },
-      { name: 'Gold Rates', description: 'Gold rate management' },
+      { name: 'Categories', description: 'Category management' },
       { name: 'Health', description: 'System health' },
     ],
   },
-  apis: ['./src/modules/**/*.routes.js', './src/modules/health/health.routes.js'],
+  apis: ['./src/modules/**/*.routes.js', './src/app.js'],
 };
 
 const swaggerSpec = swaggerJsdoc(options);

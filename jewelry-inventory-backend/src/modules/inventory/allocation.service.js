@@ -3,25 +3,26 @@ const { NotFoundError, InsufficientStockError } = require('../../common/constant
 
 /**
  * Allocation Service — moves stock from Central Inventory → Store Inventory
+ * Weight is expressed in RATI or CARAT as per the product's weightUnit.
  * All operations run inside a Prisma transaction to ensure atomicity.
  */
 class AllocationService {
   /**
    * Allocate stock from central inventory to a store
+   *
    * @param {Object} data
    * @param {string} data.productId
    * @param {string} data.storeId
-   * @param {number} data.weight        - gross weight to allocate
-   * @param {number} [data.stoneCount]
-   * @param {number} [data.stoneWeight]
+   * @param {number} data.weight        - weight to allocate (in product's weightUnit: RATI or CARAT)
+   * @param {number} [data.stoneCount]  - number of stones to allocate
    * @param {string} [data.notes]
    * @param {string} data.performedBy   - userId
    */
   async allocate(data) {
-    const { productId, storeId, weight, stoneCount = 0, stoneWeight = 0, notes, performedBy } = data;
+    const { productId, storeId, weight, stoneCount = 0, notes, performedBy } = data;
 
     return prisma.$transaction(async tx => {
-      // 1. Lock & validate product
+      // 1. Validate product and store
       const product = await tx.product.findUnique({ where: { id: productId } });
       if (!product) throw new NotFoundError('Product');
 
@@ -34,8 +35,9 @@ class AllocationService {
       if (central.availableWeight < weight) {
         throw new InsufficientStockError(central.availableWeight, weight);
       }
-
-      const netGoldWeight = weight - stoneWeight;
+      if (stoneCount > 0 && (central.totalStones - central.reservedStones) < stoneCount) {
+        throw new InsufficientStockError(central.totalStones - central.reservedStones, stoneCount);
+      }
 
       // 3. Deduct from central inventory
       await tx.centralInventory.update({
@@ -44,7 +46,6 @@ class AllocationService {
           reservedWeight: central.reservedWeight + weight,
           availableWeight: central.availableWeight - weight,
           reservedStones: central.reservedStones + stoneCount,
-          netGoldWeight: central.netGoldWeight - netGoldWeight,
         },
       });
 
@@ -61,8 +62,6 @@ class AllocationService {
             allocatedWeight: existingStore.allocatedWeight + weight,
             availableWeight: existingStore.availableWeight + weight,
             allocatedStones: existingStore.allocatedStones + stoneCount,
-            stoneWeight: existingStore.stoneWeight + stoneWeight,
-            netGoldWeight: existingStore.netGoldWeight + netGoldWeight,
           },
           include: { product: true, store: true },
         });
@@ -78,8 +77,6 @@ class AllocationService {
             allocatedStones: stoneCount,
             soldStones: 0,
             returnedStones: 0,
-            stoneWeight,
-            netGoldWeight,
           },
           include: { product: true, store: true },
         });
@@ -94,10 +91,8 @@ class AllocationService {
           toStoreId: storeId,
           weight,
           stoneCount,
-          stoneWeight,
-          netGoldWeight,
           reference,
-          notes: notes || `Allocated ${weight}g to ${store.name}`,
+          notes: notes || `Allocated ${weight} ${product.weightUnit} to ${store.name}`,
           performedBy,
         },
       });
@@ -110,7 +105,7 @@ class AllocationService {
   }
 
   /**
-   * Transfer stock between two stores (store → store via central)
+   * Transfer stock between two stores
    */
   async transfer(fromStoreId, toStoreId, productId, weight, performedBy) {
     return prisma.$transaction(async tx => {
@@ -123,14 +118,11 @@ class AllocationService {
         throw new InsufficientStockError(fromInventory.availableWeight, weight);
       }
 
-      const netGoldWeight = weight;
-
       await tx.storeInventory.update({
         where: { storeId_productId: { storeId: fromStoreId, productId } },
         data: {
           allocatedWeight: fromInventory.allocatedWeight - weight,
           availableWeight: fromInventory.availableWeight - weight,
-          netGoldWeight: fromInventory.netGoldWeight - netGoldWeight,
         },
       });
 
@@ -145,7 +137,6 @@ class AllocationService {
           data: {
             allocatedWeight: toInventory.allocatedWeight + weight,
             availableWeight: toInventory.availableWeight + weight,
-            netGoldWeight: toInventory.netGoldWeight + netGoldWeight,
           },
         });
       } else {
@@ -160,8 +151,6 @@ class AllocationService {
             allocatedStones: 0,
             soldStones: 0,
             returnedStones: 0,
-            stoneWeight: 0,
-            netGoldWeight,
           },
         });
       }
@@ -175,10 +164,8 @@ class AllocationService {
           toStoreId,
           weight,
           stoneCount: 0,
-          stoneWeight: 0,
-          netGoldWeight,
           reference,
-          notes: `Inter-store transfer ${weight}g`,
+          notes: `Inter-store transfer — ${weight} units`,
           performedBy,
         },
       });

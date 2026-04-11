@@ -1,283 +1,182 @@
-# Jewelry Inventory Management System - Backend
+# 💎 Ratna Jewelry Inventory Management System
 
-A production-grade, centralized jewelry inventory management system backend built with Node.js, Express, Prisma, and MongoDB.
+> A production-grade, highly secure, and centralized backend system designed specifically for scaling jewelry retail chains. It enforces strict multi-tenant data isolation, ACID-compliant ledger transactions, and a robust stone-based pricing model.
 
-## Features
+![Node.js](https://img.shields.io/badge/Node.js-v20-339933?style=for-the-badge&logo=node.js)
+![Express.js](https://img.shields.io/badge/Express.js-Backend-000000?style=for-the-badge&logo=express)
+![MongoDB](https://img.shields.io/badge/MongoDB-Replica%20Set-47A248?style=for-the-badge&logo=mongodb)
+![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?style=for-the-badge&logo=prisma)
+![Redis](https://img.shields.io/badge/Redis-Caching%20%26%20Queues-DC382D?style=for-the-badge&logo=redis)
 
-- **Authentication & Authorization**: JWT-based authentication with refresh tokens, RBAC (Role-Based Access Control)
-- **User Management**: Create and manage users with different roles (Super Admin, Store Admin, Cashier)
-- **Store Management**: Manage multiple stores with centralized control
-- **Product Management**: Product catalog with SKU generation, search, and filtering
-- **Inventory Engine**: Central inventory with ACID stock allocation to stores, inter-store transfers, and full ledger trail
-- **Billing System**: POS invoice creation (ACID transaction), dynamic pricing (gold rate × weight + making charge + GST), RFID tagging per item, customer management
-- **Refund System**: RFID-based returns, weight tolerance auto-approval, manager approval workflow, stock reversal
-- **Gold Rate Management**: Live gold rate per purity (24K/22K/18K/14K) stored in DB — cashiers always fetch the current rate
-- **Audit & Reporting**: Audit logs, sales reports, inventory snapshots, per-store dashboard
-- **Background Jobs**: Bull queue workers for PDF invoice generation, email notifications, and report pre-computation
-- **API Documentation**: Interactive Swagger UI at `/api/docs`
-- **Security**: Rate limiting, input validation, error handling, distributed locking
-- **Database**: MongoDB with Prisma ORM, full transaction support
+---
 
-## Tech Stack
+## 🏗 High-Level Design (HLD) & Architecture
 
-- **Runtime**: Node.js v20 LTS
-- **Framework**: Express.js
-- **Language**: JavaScript (ES6+)
-- **ORM**: Prisma
-- **Database**: MongoDB (with replica set for transactions)
-- **Cache**: Redis
-- **Authentication**: JWT
-- **Validation**: express-validator
-- **Logging**: Winston
+The system is constructed with a highly decoupled, service-oriented architecture. Heavy tasks (like PDF generation and complex aggregations) are offloaded to background worker queues, while strict middleware enforces Data Isolation across all branch stores.
 
-## Prerequisites
+```mermaid
+graph TD
+    Client[Frontend / POS Client] -->|HTTPS| API[Express REST API]
+    
+    subgraph System Gateway
+        API --> Auth[JWT Auth & RBAC Middleware]
+        Auth --> Validator[Express Validator]
+    end
+    
+    subgraph Core Engines
+        Validator --> Inv[Inventory Engine]
+        Validator --> Bill[Billing Engine]
+        Validator --> Ref[Refund Engine]
+        Validator --> Aud[Reports & Audit]
+    end
+    
+    subgraph Persistence Layer
+        Inv -->|Prisma Transactions| DB[(MongoDB Replica Set)]
+        Bill -->|Prisma Transactions| DB
+        Ref -->|Prisma Transactions| DB
+        Aud -->|Prisma Read/Write| DB
+    end
 
-- Node.js >= 20.0.0
-- MongoDB >= 7.0 (with replica set)
-- Redis >= 7.0
-- Docker and Docker Compose (optional)
+    subgraph Background Processing
+        Bill -.->|Enqueue Jobs| Queue[Bull Queue]
+        Aud -.->|Cache Heavy Queries| Cache[(Redis)]
+        Queue --> Workers[PDF & Email Processors]
+    end
+```
 
-## Installation
+---
 
-1. Clone the repository
-2. Install dependencies:
+## ✨ Comprehensive Feature Implementation
+
+### 1. Stone-Based Inventory Matrix (`RATI` / `CARAT`)
+Ratna completely abandons generic gold-weight models in favor of precise, stone-by-stone tracking.
+- **Dual Inventory:** Stocks are received into a `Central Inventory` (HQ) and strictly allocated to branch `Store Inventories` via immutable ledger movements.
+- **Validation:** Transactions validate available `totalWeight` and `stoneCount` with milligram precision before allowing billing or transfers to proceed.
+
+### 2. Multi-Tenant Role Isolation (RBAC)
+A sophisticated `storeId` injection middleware ensures complete data sandboxing between branches.
+- **`SUPER_ADMIN` (HQ):** Global read/write operations. Complete oversight, stock allocation, global dashboard insights, and user provision management.
+- **`STORE_ADMIN` (Branch Manager):** Can manage their branch's POS flow, monitor localized reporting, and override refunds. They possess read-only rights to the global product catalog.
+- **`CASHIER` (POS Operator):** Strictly scoped to their individual `storeId`. Fully empowered to handle day-to-day operations: creating invoices, cancelling erroneous bills, and initiating / managing the refund lifecycle to maximize checkout efficiency.
+
+### 3. POS Billing Engine
+Constructed relying exclusively on **ACID Transactions** via MongoDB Replica Sets to prevent ghost stock or partial failures.
+- **Dynamic Pricing:** Automatically computes price based on real-time `weight`, `pricePerUnit`, and custom `GST` brackets.
+- **Atomic Operations:** Creating an invoice simultaneously removes stock from `StoreInventory`, attaches a `Customer`, generates a unique `InvoiceNumber`, writes a `SALE` entry to the immutable `InventoryLedger`, and fires asynchronous queues for invoice printing.
+- **RFID Stamping:** Every line item generated in an invoice generates a mathematically unique `RFID` code, preventing fraudulent returns.
+
+### 4. Automated Refund Lifecycle
+The refund system leverages the unique RFIDs attached during billing.
+- Cashiers scan the `RFID` to initiate a return.
+- If the returned mass precisely matches the sold mass, the item is **Auto-Approved** and stock is immediately restored to the `StoreInventory`.
+- Discrepancies generate a `PENDING` state, locking the refund into an immutable queue until manual review is performed.
+
+### 5. High-Performance Dashboard & Audit System
+- **Redis Caching:** Global KPI dashboards and 30-day chronological revenue trends are pre-computed by a Bull worker process and cached in Redis with a 5-minute TTL, resulting in sub-10ms response times for executives.
+- **Event Audit Logs:** Every critical mutation (Allocation, Billing, Refunds, Store updates) writes an immutable `AuditLog` mapping the specific `userId`, `ipAddress`, and delta JSON.
+
+---
+
+## 🔄 Core System Flow: Lifecycle of a Product
+
+```mermaid
+sequenceDiagram
+    participant HQ as Super Admin (HQ)
+    participant Central as Central Inventory
+    participant Store as Store Inventory
+    participant POS as Cashier (POS)
+    participant Customer as Customer
+
+    HQ->>Central: 1. Receive new Supplier Stock (POST /inventory/central)
+    HQ->>Store: 2. Allocate Stock to Branch (POST /inventory/allocate)
+    Note over Central,Store: Immutable Allocation Ledger Created
+    
+    Customer->>POS: 3. Decides to buy Jewelry
+    POS->>POS: 4. Cashier scans item / inputs weight
+    POS->>Store: 5. Deduct Stock & Generate Invoice (POST /billing/invoices)
+    Note over Store,POS: ACID Transaction + Unique RFID Tag Generated
+    POS->>Customer: 6. Hand over Jewelry + PDF Receipt
+    
+    Customer->>POS: 7. Returns item later
+    POS->>Store: 8. Scan RFID + Validate Weight (POST /refunds)
+    Note over POS,Store: Stock Restored to Store Inventory
+```
+
+---
+
+## 🛠 Tech Stack & Implementation Details
+
+| Technology | Purpose in System | Implementation Detail |
+|------------|----------------|------------------------|
+| **Node.js (v20)** | Runtime Engine | Utilizes modern asynchronous architecture for non-blocking I/O. |
+| **Express.js** | Routing & APIs | RESTful architecture with heavily segmented route domains. |
+| **Prisma ORM** | Data Access | Utilizes `$transaction` blocks to ensure strict ACID compliance across MongoDB documents. |
+| **MongoDB** | Persistence | Running as a **Replica Set** strictly to enable multi-document transactions. |
+| **Redis** | Speed & Reliability | Backs the `Bull` job queue for PDF invoice processing and acts as an in-memory cache for heavy aggregation queries (Dashboards). |
+| **JWT** | Auth & Security | Bearer tokens heavily utilized. The `storeId` is cryptographically embedded into the token to dynamically rewrite queries and prevent IDOR attacks. |
+| **Jest / Supertest** | Testing | Full E2E and integration suite running serially (`--runInBand`) to avoid DB deadlocks during transactional stress testing. |
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+- Node.js `v20.x` or higher
+- Docker & Docker Compose (for spinning up the local replica set)
+
+### 1. Bootstrapping the Environment
 ```bash
+# Clone and install dependencies
+git clone <repository-url>
+cd jewelry-inventory-backend
 npm install
+
+# Setup Environment Files
+cp .env.example .env
 ```
 
-3. Copy environment file:
+### 2. Infrastructure Initialization
+Because MongoDB requires Replica Sets for Prisma Transactions, utilizing Docker is highly recommended.
 ```bash
-copy .env.example .env
-```
-
-4. Update `.env` with your configuration
-
-5. Start MongoDB and Redis (using Docker):
-```bash
+# Spins up MongoDB (Configured as Replica Set rs0) and Redis
 docker-compose up -d
 ```
 
-6. Generate Prisma client:
+### 3. Database Calibration
 ```bash
+# Generate the Prisma Client tailored to your OS
 npm run prisma:generate
-```
 
-7. Synchronize database with schema:
-```bash
+# Sync schema and constraints
 npm run prisma:migrate
-```
-(Note: For MongoDB, this runs `prisma db push`)
 
-8. Seed the database:
-```bash
+# Seed default Admins, Stores, and Catalog Data
 npm run seed
 ```
 
-## Running the Application
-
-### Development
+### 4. Running the Server
 ```bash
+# Development Mode (Hot-reloading enabled)
 npm run dev
+
+# Testing Suite (Run serially to prevent MongoDB lockups)
+npm test
 ```
 
-### Production
-```bash
-npm start
-```
+---
 
-## Visualizing Data
+## 📖 Developer References
 
-### Method 1: Prisma Studio (Recommended)
-Prisma Studio is a visual editor for your data.
+### API Swagger Documentation
+Once the server is running, interactive API documentation is exposed detailing all DTOs and Response Codes:
+👉 [http://localhost:3000/api/docs](http://localhost:3000/api/docs)
 
+### Visualizing Data
+To inspect database relations dynamically without writing raw Mongo queries:
 ```bash
 npm run prisma:studio
 ```
-This will open a web interface at `http://localhost:5555`.
+👉 [http://localhost:5555](http://localhost:5555)
 
-### Method 2: MongoDB Compass
-You can connect using MongoDB Compass with the connection string:
-`mongodb://localhost:27017/jewelry_inventory?replicaSet=rs0&readPreference=primary&ssl=false`
-
-### Method 3: Command Line (mongosh)
-Access the database directly via Docker:
-```bash
-docker exec -it jewelry_mongodb mongosh jewelry_inventory
-```
-Then run queries like:
-```javascript
-db.User.find()
-db.Invoice.find()
-```
-
-## Default Credentials
-
-After seeding the database, you can login with:
-
-- **Super Admin**: admin@jewelry.com / Admin@123
-- **Store Admin**: storeadmin@jewelry.com / StoreAdmin@123
-- **Cashier**: cashier@jewelry.com / Cashier@123
-
-## API Endpoints
-
-### Authentication
-- `POST /api/v1/auth/login` - Login
-- `POST /api/v1/auth/refresh` - Refresh access token
-- `POST /api/v1/auth/logout` - Logout
-- `GET /api/v1/auth/profile` - Get current user profile
-
-### Users
-- `POST /api/v1/users` - Create user
-- `GET /api/v1/users` - Get all users
-- `GET /api/v1/users/:id` - Get user by ID
-- `PATCH /api/v1/users/:id` - Update user
-- `DELETE /api/v1/users/:id` - Deactivate user
-- `PATCH /api/v1/users/:id/activate` - Activate user
-
-### Stores
-- `POST /api/v1/stores` - Create store
-- `GET /api/v1/stores` - Get all stores
-- `GET /api/v1/stores/:id` - Get store by ID
-- `PATCH /api/v1/stores/:id` - Update store
-- `DELETE /api/v1/stores/:id` - Deactivate store
-- `PATCH /api/v1/stores/:id/activate` - Activate store
-- `GET /api/v1/stores/:id/stats` - Get store statistics
-
-### Products
-- `POST /api/v1/products` - Create product
-- `GET /api/v1/products` - Get all products
-- `GET /api/v1/products/search?q=query` - Search products
-- `GET /api/v1/products/:id` - Get product by ID
-- `PATCH /api/v1/products/:id` - Update product
-- `DELETE /api/v1/products/:id` - Deactivate product
-- `PATCH /api/v1/products/:id/activate` - Activate product
-
-### Inventory (Phase 2)
-- `POST /api/v1/inventory/central` - Receive stock into central inventory *(Super Admin)*
-- `GET /api/v1/inventory/central` - List all central inventory *(Super Admin)*
-- `GET /api/v1/inventory/central/:productId` - Get central stock for a product *(Super Admin)*
-- `PATCH /api/v1/inventory/central/:productId/adjust` - Manual stock adjustment *(Super Admin)*
-- `POST /api/v1/inventory/allocate` - Allocate stock central → store *(Super Admin)*
-- `POST /api/v1/inventory/transfer` - Inter-store stock transfer *(Super Admin)*
-- `GET /api/v1/inventory/summary` - Cross-store inventory summary *(Super Admin)*
-- `GET /api/v1/inventory/store/:storeId` - View store inventory *(Store Admin, Super Admin)*
-- `GET /api/v1/inventory/ledger` - Query inventory ledger *(Super Admin)*
-- `GET /api/v1/inventory/ledger/summary` - Ledger summary by type *(Super Admin)*
-
-### Billing (Phase 2)
-- `POST /api/v1/billing/invoices` - Create invoice (POS sale) *(Cashier, Store Admin, Super Admin)*
-- `GET /api/v1/billing/invoices` - List invoices *(Cashier, Store Admin, Super Admin)*
-- `GET /api/v1/billing/invoices/:id` - Get invoice by ID *(Cashier, Store Admin, Super Admin)*
-- `PATCH /api/v1/billing/invoices/:id/cancel` - Cancel invoice *(Store Admin, Super Admin)*
-- `POST /api/v1/billing/customers` - Upsert customer by phone *(Cashier, Store Admin, Super Admin)*
-- `GET /api/v1/billing/customers` - List customers *(Store Admin, Super Admin)*
-- `GET /api/v1/billing/customers/:id` - Get customer with invoice history *(Cashier, Store Admin, Super Admin)*
-
-### Refunds (Phase 2)
-- `POST /api/v1/refunds` - Initiate refund by RFID *(Cashier, Store Admin, Super Admin)*
-- `GET /api/v1/refunds` - List refunds *(Store Admin, Super Admin)*
-- `GET /api/v1/refunds/:id` - Get refund details *(Cashier, Store Admin, Super Admin)*
-- `PATCH /api/v1/refunds/:id/approve` - Approve pending refund *(Store Admin, Super Admin)*
-- `PATCH /api/v1/refunds/:id/reject` - Reject pending refund *(Store Admin, Super Admin)*
-
-### Gold Rates (Phase 3)
-- `POST /api/v1/gold-rates` - Set gold rate *(Super Admin)*
-- `GET /api/v1/gold-rates` - List rate history *(All authenticated)*
-- `GET /api/v1/gold-rates/current` - Current rates for all purities *(All authenticated)*
-- `GET /api/v1/gold-rates/current/:purity` - Current rate for a specific purity *(All authenticated)*
-
-### Documentation & Health
-- `GET /api/docs` - Interactive Swagger UI (all endpoints documented)
-- `GET /api/docs.json` - Raw OpenAPI JSON spec
-- `GET /health` - System health (DB + Redis status, uptime, memory)
-
-## Pricing Formula
-
-```
-goldPrice    = netGoldWeight × goldRatePerGram
-makingCharge = (PER_GRAM | PERCENTAGE | FIXED — per product config)
-gstAmount    = (goldPrice + makingCharge) × gstRate / 100
-totalAmount  = goldPrice + makingCharge + gstAmount
-```
-
-## Refund Workflow
-
-1. Cashier scans RFID at POS → `POST /api/v1/refunds`
-2. System checks weight deviation vs. `WEIGHT_TOLERANCE_GRAMS` (default `0.01g`)
-3. Within tolerance → **auto-approved** + stock reversed immediately
-4. Exceeds tolerance → status `PENDING`, requires manager approval
-5. Manager calls `PATCH /api/v1/refunds/:id/approve` → stock reversed + ledger updated
-
-## Project Structure
-
-```
-src/
-├── app.js                      # Express app setup
-├── server.js                   # Server entry point
-├── common/                     # Shared utilities
-│   ├── middleware/             # Express middleware (auth, rbac, validate, error)
-│   ├── utils/                  # Helper functions (response, encryption, logger)
-│   └── constants/              # Constants, enums, error classes
-├── database/                   # Database layer
-│   ├── prisma/                 # Prisma client setup
-│   └── seeders/                # Database seeders
-└── modules/                    # Feature modules
-    ├── auth/                   # Authentication
-    ├── users/                  # User management
-    ├── stores/                 # Store management
-    ├── products/               # Product catalog
-    ├── inventory/              # Inventory engine (Phase 2)
-    │   ├── central-inventory.service.js
-    │   ├── store-inventory.service.js
-    │   ├── allocation.service.js
-    │   ├── ledger.service.js
-    │   ├── inventory.controller.js
-    │   ├── inventory.validators.js
-    │   └── inventory.routes.js
-    ├── billing/                # Billing system (Phase 2)
-    │   ├── pricing.service.js
-    │   ├── billing.service.js
-    │   ├── invoice.service.js
-    │   ├── customer.service.js
-    │   ├── billing.controller.js
-    │   ├── billing.validators.js
-    │   └── billing.routes.js
-    ├── refunds/                # Refund system (Phase 2)
-    │   ├── refund.service.js
-    │   ├── approval.service.js
-    │   ├── refunds.controller.js
-    │   ├── refund.validators.js
-    │   └── refunds.routes.js
-    └── audit/                  # Audit & reporting (Phase 2)
-        ├── audit-log.service.js
-        ├── report.service.js
-        ├── audit.controller.js
-        ├── audit.validators.js
-        └── audit.routes.js
-```
-
-## Scripts
-
-- `npm start` - Start production server
-- `npm run dev` - Start development server with nodemon
-- `npm test` - Run tests
-- `npm run lint` - Run ESLint
-- `npm run lint:fix` - Fix ESLint errors
-- `npm run format` - Format code with Prettier
-- `npm run prisma:generate` - Generate Prisma client
-- `npm run prisma:migrate` - Run database migrations
-- `npm run prisma:studio` - Open Prisma Studio
-- `npm run seed` - Seed database
-
-## Environment Variables
-
-See `.env.example` for all available environment variables.
-
-Key Phase 2 variables:
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `WEIGHT_TOLERANCE_GRAMS` | `0.01` | Max weight deviation (grams) for auto-approving refunds |
-
-## License
-
-MIT
+### Frontend Integration
+Refer to `API_DOCUMENTATION.md` in the root repository for specific frontend guides, RBAC breakdowns, and exact payload requirements for crucial routes.

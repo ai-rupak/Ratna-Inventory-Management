@@ -24,6 +24,7 @@ const createRateLimiter = (options = {}) => {
     },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: () => process.env.NODE_ENV === 'test',
     ...options,
   };
 

@@ -45,6 +45,11 @@ enum LedgerType {
   ADJUSTMENT
 }
 
+enum WeightUnit {
+  RATI
+  CARAT
+}
+
 model User {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   email     String   @unique
@@ -84,11 +89,11 @@ model Product {
   id                String   @id @default(auto()) @map("_id") @db.ObjectId
   sku               String   @unique
   name              String
-  category          String
-  purity            String
+  categoryId        String   @db.ObjectId
+  category          Category @relation(fields: [categoryId], references: [id])
+  weightUnit        WeightUnit @default(CARAT)
+  pricePerUnit      Float
   hsnCode           String
-  makingChargeType  String   // PER_GRAM, FIXED, PERCENTAGE
-  makingCharge      Float
   gstRate           Float
   isActive          Boolean  @default(true)
   centralInventory  CentralInventory?
@@ -96,8 +101,7 @@ model Product {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  @@index([category])
-  @@index([purity])
+  @@index([categoryId])
   @@index([isActive])
 }
 
@@ -110,8 +114,6 @@ model CentralInventory {
   availableWeight Float
   totalStones     Int      @default(0)
   reservedStones  Int      @default(0)
-  stoneWeight     Float    @default(0)
-  netGoldWeight   Float
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
@@ -129,8 +131,6 @@ model StoreInventory {
   allocatedStones Int      @default(0)
   soldStones      Int      @default(0)
   returnedStones  Int      @default(0)
-  stoneWeight     Float    @default(0)
-  netGoldWeight   Float
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -145,8 +145,6 @@ model InventoryLedger {
   toStoreId     String?    @db.ObjectId
   weight        Float
   stoneCount    Int        @default(0)
-  stoneWeight   Float      @default(0)
-  netGoldWeight Float
   reference     String
   invoiceId     String?    @db.ObjectId
   refundId      String?    @db.ObjectId
@@ -203,16 +201,10 @@ model InvoiceItem {
   productId       String   @db.ObjectId
   productName     String
   sku             String
-  purity          String
   hsnCode         String
-  allocatedWeight Float?
-  actualWeight    Float
+  weight          Float
   stoneCount      Int      @default(0)
-  stoneWeight     Float    @default(0)
-  netGoldWeight   Float
-  ratePerGram     Float
-  goldPrice       Float
-  makingCharge    Float
+  pricePerUnit    Float
   gstRate         Float
   gstAmount       Float
   totalAmount     Float
@@ -231,8 +223,7 @@ model Refund {
   invoice         Invoice      @relation(fields: [invoiceId], references: [id])
   rfid            String
   returnedWeight  Float
-  actualWeight    Float
-  weightDeviation Float
+  returnedStones  Int          @default(0)
   refundAmount    Float
   status          RefundStatus @default(PENDING)
   reason          String?
@@ -266,14 +257,14 @@ model AuditLog {
   @@index([createdAt])
 }
 
-model GoldRate {
-  id            String   @id @default(auto()) @map("_id") @db.ObjectId
-  purity        String   // 24K, 22K, 18K, 14K
-  ratePerGram   Float
-  effectiveFrom DateTime @default(now())
-  setBy         String   @db.ObjectId
-  createdAt     DateTime @default(now())
+model Category {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  name        String    @unique
+  description String?
+  isActive    Boolean   @default(true)
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  @@index([purity])
-  @@index([effectiveFrom])
+  @@index([isActive])
 }

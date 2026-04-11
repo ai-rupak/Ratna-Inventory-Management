@@ -72,7 +72,7 @@ router.use(authenticate);
  */
 /**
  * @swagger
- * /api/v1/users:
+ * /users:
  *   post:
  *     summary: Create a new user
  *     tags: [Users]
@@ -92,14 +92,14 @@ router.use(authenticate);
  */
 router.post(
   '/',
-  requireRole(ROLES.SUPER_ADMIN, ROLES.STORE_ADMIN),
+  requireRole(ROLES.SUPER_ADMIN),
   createUserValidation,
   validate,
   userController.createUser
 );
 /**
  * @swagger
- * /api/v1/users:
+ * /users:
  *   get:
  *     summary: Get all users
  *     tags: [Users]
@@ -150,7 +150,7 @@ router.get(
  */
 /**
  * @swagger
- * /api/v1/users/{id}:
+ * /users/{id}:
  *   get:
  *     summary: Get user by ID
  *     tags: [Users]
@@ -183,7 +183,7 @@ router.get(
  */
 /**
  * @swagger
- * /api/v1/users/{id}:
+ * /users/{id}:
  *   patch:
  *     summary: Update user
  *     tags: [Users]
@@ -204,7 +204,7 @@ router.get(
  */
 router.patch(
   '/:id',
-  requireRole(ROLES.SUPER_ADMIN, ROLES.STORE_ADMIN),
+  requireRole(ROLES.SUPER_ADMIN),
   updateUserValidation,
   validate,
   userController.updateUser
@@ -217,7 +217,7 @@ router.patch(
  */
 /**
  * @swagger
- * /api/v1/users/{id}:
+ * /users/{id}:
  *   delete:
  *     summary: Deactivate user
  *     description: Soft-deletes (deactivates) a user
@@ -234,7 +234,7 @@ router.patch(
  */
 router.delete(
   '/:id',
-  requireRole(ROLES.SUPER_ADMIN, ROLES.STORE_ADMIN),
+  requireRole(ROLES.SUPER_ADMIN),
   userIdValidation,
   validate,
   userController.deleteUser
@@ -247,7 +247,7 @@ router.delete(
  */
 /**
  * @swagger
- * /api/v1/users/{id}/activate:
+ * /users/{id}/activate:
  *   patch:
  *     summary: Activate user
  *     tags: [Users]
@@ -263,7 +263,7 @@ router.delete(
  */
 router.patch(
   '/:id/activate',
-  requireRole(ROLES.SUPER_ADMIN, ROLES.STORE_ADMIN),
+  requireRole(ROLES.SUPER_ADMIN),
   userIdValidation,
   validate,
   userController.activateUser
@@ -276,7 +276,7 @@ router.patch(
  */
 /**
  * @swagger
- * /api/v1/users/store/{storeId}:
+ * /users/store/{storeId}:
  *   get:
  *     summary: Get users by store
  *     tags: [Users]
@@ -299,3 +299,4 @@ router.get(
 );
 
 module.exports = router;
+

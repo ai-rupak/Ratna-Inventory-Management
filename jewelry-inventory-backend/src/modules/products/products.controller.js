@@ -37,12 +37,16 @@ class ProductController {
       const page = parseInt(req.query.page, 10) || 1;
       const limit = parseInt(req.query.limit, 10) || 20;
       const filters = {
-        category: req.query.category,
-        purity: req.query.purity,
+        categoryId: req.query.categoryId,
+        weightUnit: req.query.weightUnit,
       };
 
       if (req.query.isActive !== undefined) {
         filters.isActive = req.query.isActive === 'true';
+      }
+
+      if (req.user.role !== 'SUPER_ADMIN') {
+        filters.storeId = req.user.storeId;
       }
 
       const result = await productService.getAllProducts(page, limit, filters);
@@ -57,7 +61,8 @@ class ProductController {
    */
   async searchProducts(req, res, next) {
     try {
-      const products = await productService.searchProducts(req.query.q);
+      const storeId = req.user.role !== 'SUPER_ADMIN' ? req.user.storeId : null;
+      const products = await productService.searchProducts(req.query.q, storeId);
       successResponse(res, products, 'Products search completed');
     } catch (error) {
       next(error);

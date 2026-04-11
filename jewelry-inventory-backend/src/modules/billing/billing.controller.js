@@ -40,8 +40,8 @@ class BillingController {
         toDate: req.query.toDate,
       };
 
-      // STORE_ADMIN can only see their store's invoices
-      if (req.user.role === 'STORE_ADMIN' && !filters.storeId) {
+      // STORE_ADMIN and CASHIER can only see their store's invoices
+      if (req.user.role !== 'SUPER_ADMIN') {
         filters.storeId = req.user.storeId;
       }
 
@@ -54,6 +54,14 @@ class BillingController {
 
   async cancelInvoice(req, res, next) {
     try {
+      // Ensure STORE_ADMIN and CASHIER can only cancel their own store's invoices
+      if (req.user.role !== 'SUPER_ADMIN') {
+        const existingInvoice = await invoiceService.getInvoiceById(req.params.id);
+        if (existingInvoice.storeId !== req.user.storeId) {
+          return res.status(403).json({ success: false, error: 'Access denied: Invoice belongs to another store' });
+        }
+      }
+
       const invoice = await invoiceService.cancelInvoice(req.params.id, req.user.id);
       successResponse(res, invoice, 'Invoice cancelled');
     } catch (err) {

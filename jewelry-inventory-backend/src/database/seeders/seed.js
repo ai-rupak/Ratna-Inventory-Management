@@ -105,46 +105,58 @@ async function seed() {
       logger.info('Cashier already exists');
     }
 
-    // Create sample products
+    // Seed Categories First
+    const categoriesToSeed = ['Ring', 'Necklace', 'Bangles', 'Earrings'];
+    const categoryMap = {};
+    for (const name of categoriesToSeed) {
+      let category = await prisma.category.findUnique({ where: { name } });
+      if (!category) {
+        category = await prisma.category.create({
+          data: { name, description: `All ${name} items` }
+        });
+        logger.info(`Category created: ${name}`);
+      } else {
+        logger.info(`Category already exists: ${name}`);
+      }
+      categoryMap[name] = category.id;
+    }
+
+    // Create sample products (stone-based, priced per RATI or CARAT)
     const products = [
       {
-        sku: 'RING-22K-001',
-        name: 'Gold Ring 22K Classic',
-        category: 'Ring',
-        purity: '22K',
-        hsnCode: '71131910',
-        makingChargeType: 'PER_GRAM',
-        makingCharge: 500,
+        sku: 'RING-CAR-001',
+        name: 'Ruby Ring',
+        categoryId: categoryMap['Ring'],
+        weightUnit: 'CARAT',
+        pricePerUnit: 12000,
+        hsnCode: '71039900',
         gstRate: 3.0,
       },
       {
-        sku: 'NECK-22K-001',
-        name: 'Gold Necklace 22K Traditional',
-        category: 'Necklace',
-        purity: '22K',
-        hsnCode: '71131910',
-        makingChargeType: 'PER_GRAM',
-        makingCharge: 600,
+        sku: 'NECK-RAT-001',
+        name: 'Emerald Necklace',
+        categoryId: categoryMap['Necklace'],
+        weightUnit: 'RATI',
+        pricePerUnit: 8500,
+        hsnCode: '71039900',
         gstRate: 3.0,
       },
       {
-        sku: 'BANG-22K-001',
-        name: 'Gold Bangles 22K Pair',
-        category: 'Bangles',
-        purity: '22K',
-        hsnCode: '71131910',
-        makingChargeType: 'FIXED',
-        makingCharge: 5000,
+        sku: 'BANG-CAR-001',
+        name: 'Sapphire Bangle Set',
+        categoryId: categoryMap['Bangles'],
+        weightUnit: 'CARAT',
+        pricePerUnit: 9500,
+        hsnCode: '71039900',
         gstRate: 3.0,
       },
       {
-        sku: 'EARR-18K-001',
-        name: 'Diamond Earrings 18K',
-        category: 'Earrings',
-        purity: '18K',
-        hsnCode: '71131910',
-        makingChargeType: 'PERCENTAGE',
-        makingCharge: 15,
+        sku: 'EARR-RAT-001',
+        name: 'Diamond Earrings',
+        categoryId: categoryMap['Earrings'],
+        weightUnit: 'RATI',
+        pricePerUnit: 25000,
+        hsnCode: '71039900',
         gstRate: 3.0,
       },
     ];

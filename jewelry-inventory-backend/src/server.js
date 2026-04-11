@@ -1,12 +1,17 @@
+// ── Step 1: Load env vars & validate BEFORE anything else ────────────────
 require('dotenv').config();
+const { validateEnv } = require('./config/env.config');
+validateEnv();
+
+// ── Step 2: Normal imports ────────────────────────────────────────────────
 const app = require('./app');
 const logger = require('./common/utils/logger.util');
-const { connectDatabase } = require('./database/prisma/client');
+const { connectDatabase, prisma } = require('./database/prisma/client');
 
 const PORT = process.env.PORT || 3000;
 
 /**
- * Start background job queue processors
+ * Start background job queue processors (degrade gracefully if Redis is down)
  */
 function startQueueProcessors() {
   try {
@@ -21,55 +26,58 @@ function startQueueProcessors() {
 
     logger.info('Background job processors started (PDF, Email, Report)');
   } catch (err) {
-    // Don't crash the server if Redis is unavailable; queues degrade gracefully
-    logger.warn('Failed to start queue processors (Redis may be unavailable):', err.message);
+    logger.warn('Queue processors failed to start — Redis may be unavailable:', err.message);
   }
 }
 
 async function startServer() {
   try {
-    // Connect to database
     await connectDatabase();
     logger.info('Database connected successfully');
 
-    // Start queue processors
     startQueueProcessors();
 
-    // Start server
     const server = app.listen(PORT, () => {
-
       logger.info(`Server running on port ${PORT}`);
       logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-      logger.info(`API Prefix: ${process.env.API_PREFIX || '/api/v1'}`);
+      logger.info(`API Docs: http://localhost:${PORT}/api/docs`);
     });
 
-    // Graceful shutdown
-    process.on('SIGTERM', () => {
-      logger.info('SIGTERM signal received: closing HTTP server');
-      server.close(() => {
+    // ── Graceful shutdown ─────────────────────────────────────────────────
+    const gracefulShutdown = async signal => {
+      logger.info(`${signal} received — shutting down gracefully`);
+
+      server.close(async () => {
         logger.info('HTTP server closed');
+        try {
+          await prisma.$disconnect();
+          logger.info('Database disconnected');
+        } catch (e) {
+          logger.error('Error disconnecting DB:', e.message);
+        }
         process.exit(0);
       });
-    });
 
-    process.on('SIGINT', () => {
-      logger.info('SIGINT signal received: closing HTTP server');
-      server.close(() => {
-        logger.info('HTTP server closed');
-        process.exit(0);
-      });
-    });
+      // Force exit after 15 s if graceful shutdown stalls
+      setTimeout(() => {
+        logger.error('Forced shutdown after timeout');
+        process.exit(1);
+      }, 15000);
+    };
 
-    // Handle uncaught exceptions
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
     process.on('uncaughtException', error => {
       logger.error('Uncaught Exception:', error);
       process.exit(1);
     });
 
-    process.on('unhandledRejection', (reason, promise) => {
-      logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    process.on('unhandledRejection', (reason) => {
+      logger.error('Unhandled Rejection:', reason);
       process.exit(1);
     });
+
   } catch (error) {
     logger.error('Failed to start server:', error);
     process.exit(1);

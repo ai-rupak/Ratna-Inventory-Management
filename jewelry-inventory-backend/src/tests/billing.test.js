@@ -8,9 +8,10 @@ describe('Billing', () => {
 
   beforeAll(async () => {
     const { prisma } = require('../database/prisma/client');
-    const store = await prisma.store.findFirst({ where: { isActive: true } });
-    storeId = store?.id;
-    // Find a product that has store inventory
+    // Must use the cashier's own store to satisfy the storeId isolation we enforced
+    const cashier = await prisma.user.findFirst({ where: { email: 'cashier@jewelry.com' } });
+    storeId = cashier?.storeId || null;
+    // Find a product that has store inventory in the cashier's store
     const inv = storeId
       ? await prisma.storeInventory.findFirst({
           where: { storeId, availableWeight: { gt: 0 } },
@@ -30,9 +31,8 @@ describe('Billing', () => {
         .set('Authorization', `Bearer ${global.cashierToken}`)
         .send({
           storeId,
-          goldRatePerGram: 6200,
           paymentMethod: 'CASH',
-          items: [{ productId, actualWeight: 1.0, stoneWeight: 0, stoneCount: 0 }],
+          items: [{ productId, weight: 1.0, stoneCount: 1 }],
         });
 
       expect([201, 400]).toContain(res.status);
@@ -40,6 +40,8 @@ describe('Billing', () => {
         invoiceId = res.body.data.id;
         expect(res.body.data.invoiceNumber).toMatch(/^INV-/);
         expect(res.body.data.items[0].rfid).toMatch(/^RFID-/);
+        expect(res.body.data.items[0].weight).toBeDefined();
+        expect(res.body.data.items[0].pricePerUnit).toBeDefined();
       }
     });
 

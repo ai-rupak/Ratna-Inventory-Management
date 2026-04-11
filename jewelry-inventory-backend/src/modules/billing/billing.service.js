@@ -10,16 +10,14 @@ const logger = require('../../common/utils/logger.util');
  * {
  *   storeId: string,
  *   cashierId: string,          // set from req.user.id
- *   goldRatePerGram: number,    // live gold rate
  *   paymentMethod: 'CASH'|'CARD'|'UPI'|'MIXED',
  *   customer?: { name, phone, email?, address? },
  *   customerId?: string,        // if existing customer
  *   items: [
  *     {
  *       productId: string,
- *       actualWeight: number,
- *       stoneWeight?: number,
- *       stoneCount?: number,
+ *       weight: number,         // weight in RATI or CARAT (per product.weightUnit)
+ *       stoneCount?: number,    // number of stones (recorded, not charged separately)
  *     }
  *   ]
  * }
@@ -33,7 +31,6 @@ class BillingService {
     const dateStr = today.toISOString().slice(0, 10).replace(/-/g, ''); // YYYYMMDD
     const prefix = `INV-${storeCode}-${dateStr}`;
 
-    // Count existing invoices with this prefix today
     const count = await prisma.invoice.count({
       where: { invoiceNumber: { startsWith: prefix } },
     });
@@ -55,7 +52,6 @@ class BillingService {
     const {
       storeId,
       cashierId,
-      goldRatePerGram,
       paymentMethod,
       customerId,
       customer: customerData,
@@ -89,9 +85,9 @@ class BillingService {
 
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
-        const { productId, actualWeight, stoneWeight = 0, stoneCount = 0 } = item;
+        const { productId, weight, stoneCount = 0 } = item;
 
-        // Load product
+        // Load product (includes weightUnit and pricePerUnit)
         const product = await tx.product.findUnique({ where: { id: productId } });
         if (!product || !product.isActive) throw new NotFoundError(`Product ${productId}`);
 
@@ -100,20 +96,14 @@ class BillingService {
           where: { storeId_productId: { storeId, productId } },
         });
         if (!storeInv) throw new NotFoundError(`No store inventory for product ${product.name}`);
-        if (storeInv.availableWeight < actualWeight) {
-          throw new InsufficientStockError(storeInv.availableWeight, actualWeight);
+        if (storeInv.availableWeight < weight) {
+          throw new InsufficientStockError(storeInv.availableWeight, weight);
         }
 
-        // Compute price
-        const price = pricingService.calculateItemPrice(
-          product,
-          actualWeight,
-          stoneWeight,
-          stoneCount,
-          goldRatePerGram
-        );
+        // Compute price: weight × pricePerUnit + GST
+        const price = pricingService.calculateItemPrice(product, weight, stoneCount);
 
-        invoiceSubtotal += price.goldPrice + price.makingCharge;
+        invoiceSubtotal += price.baseAmount;
         invoiceTotalGst += price.gstAmount;
 
         const rfid = this.generateRfid(invoiceNumber, i);
@@ -122,16 +112,10 @@ class BillingService {
           productId,
           productName: product.name,
           sku: product.sku,
-          purity: product.purity,
           hsnCode: product.hsnCode,
-          allocatedWeight: storeInv.allocatedWeight / storeInv.allocatedStones || null,
-          actualWeight,
+          weight,
           stoneCount,
-          stoneWeight,
-          netGoldWeight: price.netGoldWeight,
-          ratePerGram: goldRatePerGram,
-          goldPrice: price.goldPrice,
-          makingCharge: price.makingCharge,
+          pricePerUnit: product.pricePerUnit,
           gstRate: price.gstRate,
           gstAmount: price.gstAmount,
           totalAmount: price.totalAmount,
@@ -143,8 +127,8 @@ class BillingService {
         await tx.storeInventory.update({
           where: { storeId_productId: { storeId, productId } },
           data: {
-            soldWeight: storeInv.soldWeight + actualWeight,
-            availableWeight: storeInv.availableWeight - actualWeight,
+            soldWeight: storeInv.soldWeight + weight,
+            availableWeight: storeInv.availableWeight - weight,
             soldStones: storeInv.soldStones + stoneCount,
           },
         });
@@ -155,21 +139,19 @@ class BillingService {
             type: 'SALE',
             productId,
             fromStoreId: storeId,
-            weight: actualWeight,
+            weight,
             stoneCount,
-            stoneWeight,
-            netGoldWeight: price.netGoldWeight,
             reference: invoiceNumber,
-            notes: `Sale — ${product.name}, RFID: ${rfid}`,
+            notes: `Sale — ${product.name} (${product.weightUnit}), RFID: ${rfid}`,
             performedBy: cashierId,
           },
         });
 
-        // Also update central inventory sold weight
+        // Update central inventory reserved weight
         await tx.centralInventory.update({
           where: { productId },
           data: {
-            reservedWeight: { decrement: actualWeight },
+            reservedWeight: { decrement: weight },
           },
         });
       }
@@ -210,15 +192,13 @@ class BillingService {
         },
       });
 
+      // Enqueue background jobs (non-blocking, fire-and-forget)
+      this._enqueuePostInvoiceJobs(invoice).catch(err =>
+        logger.warn('Failed to enqueue post-invoice jobs:', err.message)
+      );
+
       return invoice;
     });
-
-    // Enqueue background jobs (non-blocking, fire-and-forget)
-    this._enqueuePostInvoiceJobs(invoice).catch(err =>
-      logger.warn('Failed to enqueue post-invoice jobs:', err.message)
-    );
-
-    return invoice;
   }
 
   async _enqueuePostInvoiceJobs(invoice) {

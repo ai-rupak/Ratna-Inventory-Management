@@ -2,16 +2,14 @@ const { body, query } = require('express-validator');
 
 const createInvoiceValidator = [
   body('storeId').notEmpty().withMessage('storeId is required'),
-  body('goldRatePerGram').isFloat({ gt: 0 }).withMessage('goldRatePerGram must be a positive number'),
   body('paymentMethod')
     .isIn(['CASH', 'CARD', 'UPI', 'MIXED'])
     .withMessage('paymentMethod must be CASH, CARD, UPI, or MIXED'),
   body('items').isArray({ min: 1 }).withMessage('items must be a non-empty array'),
   body('items.*.productId').notEmpty().withMessage('each item must have a productId'),
-  body('items.*.actualWeight')
+  body('items.*.weight')
     .isFloat({ gt: 0 })
-    .withMessage('each item actualWeight must be a positive number'),
-  body('items.*.stoneWeight').optional().isFloat({ min: 0 }),
+    .withMessage('each item weight must be a positive number (in RATI or CARAT as per product)'),
   body('items.*.stoneCount').optional().isInt({ min: 0 }),
   body('customer.name')
     .optional()

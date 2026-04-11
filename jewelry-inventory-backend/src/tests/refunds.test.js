@@ -32,12 +32,12 @@ describe('Refunds', () => {
       expect(Array.isArray(res.body.data)).toBe(true);
     });
 
-    it('should deny access to CASHIER', async () => {
+    it('should grant access to CASHIER', async () => {
       const res = await request(app)
         .get('/api/v1/refunds')
         .set('Authorization', `Bearer ${global.cashierToken}`);
 
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(200);
     });
   });
 

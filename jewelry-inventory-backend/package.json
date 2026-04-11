@@ -5,8 +5,12 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
+    "start:prod": "pm2 start ecosystem.config.js --env production",
+    "stop:prod": "pm2 stop jewelry-api",
+    "reload:prod": "pm2 reload jewelry-api",
+    "logs:prod": "pm2 logs jewelry-api",
     "dev": "nodemon src/server.js",
-    "test": "jest",
+    "test": "jest --runInBand",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "lint": "eslint src/",
@@ -42,6 +46,8 @@
     "ioredis": "^5.4.2",
     "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.10.1",
+    "pdfkit": "^0.15.2",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "winston": "^3.17.0",
@@ -61,12 +67,15 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "setupFilesAfterFramework": [],
+    "setupFilesAfterEnv": [
+      "<rootDir>/src/tests/setup.js"
+    ],
     "globalSetup": null,
-    "setupFiles": [],
-    "setupFilesAfterFramework": [],
-    "testMatch": ["**/tests/**/*.test.js"],
+    "testMatch": [
+      "**/tests/**/*.test.js"
+    ],
     "testTimeout": 30000,
-    "verbose": true
+    "verbose": true,
+    "maxWorkers": 1
   }
 }

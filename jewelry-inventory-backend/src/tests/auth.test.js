@@ -12,9 +12,9 @@ describe('Auth', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.data.tokens).toBeDefined();
-      expect(res.body.data.tokens.accessToken).toBeDefined();
-      refreshToken = res.body.data.tokens.refreshToken;
+      expect(res.body.data.accessToken).toBeDefined();
+      expect(res.body.data.refreshToken).toBeDefined();
+      refreshToken = res.body.data.refreshToken;
     });
 
     it('should reject invalid credentials', async () => {

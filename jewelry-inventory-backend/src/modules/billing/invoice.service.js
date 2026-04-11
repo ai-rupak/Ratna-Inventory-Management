@@ -93,8 +93,8 @@ class InvoiceService {
           await tx.storeInventory.update({
             where: { storeId_productId: { storeId: invoice.storeId, productId: item.productId } },
             data: {
-              soldWeight: storeInv.soldWeight - item.actualWeight,
-              availableWeight: storeInv.availableWeight + item.actualWeight,
+              soldWeight: storeInv.soldWeight - item.weight,
+              availableWeight: storeInv.availableWeight + item.weight,
               soldStones: storeInv.soldStones - item.stoneCount,
             },
           });

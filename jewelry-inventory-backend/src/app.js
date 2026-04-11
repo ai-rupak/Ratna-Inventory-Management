@@ -5,12 +5,18 @@ const cookieParser = require('cookie-parser');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./config/swagger.config');
 const { errorHandler, notFoundHandler } = require('./common/middleware/error.middleware');
+const correlationMiddleware = require('./common/middleware/correlation.middleware');
+const { standardRateLimiter, strictRateLimiter } = require('./common/middleware/rate-limit.middleware');
 const logger = require('./common/utils/logger.util');
 const healthService = require('./modules/health/health.service');
 
 const app = express();
+const apiPrefix = process.env.API_PREFIX || '/api/v1';
 
-// Security middleware
+// ── 1. Correlation IDs (first — so every log has a request ID) ─────────────
+app.use(correlationMiddleware);
+
+// ── 2. Security headers ────────────────────────────────────────────────────
 app.use(helmet());
 app.use(
   cors({
@@ -19,21 +25,26 @@ app.use(
   })
 );
 
-// Body parsing middleware
+// ── 3. Body parsing ────────────────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// Request logging
+// ── 4. Request / response logging with timing ──────────────────────────────
 app.use((req, res, next) => {
-  logger.info(`${req.method} ${req.path}`, {
-    ip: req.ip,
-    userAgent: req.get('user-agent'),
+  const start = Date.now();
+  res.on('finish', () => {
+    const ms = Date.now() - start;
+    logger.info(`${req.method} ${req.path} ${res.statusCode} — ${ms}ms`, {
+      correlationId: req.correlationId,
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+    });
   });
   next();
 });
 
-// ── Health check ───────────────────────────────────────────────────────────
+// ── 5. Health check (no rate limit, no auth) ───────────────────────────────
 /**
  * @swagger
  * /health:
@@ -41,17 +52,21 @@ app.use((req, res, next) => {
  *     summary: System health check
  *     tags: [Health]
  *     security: []
+ *     servers:
+ *       - url: /
  *     responses:
  *       200:
- *         description: System health status
+ *         description: System is healthy
+ *       503:
+ *         description: System is degraded
  */
 app.get('/health', async (req, res) => {
   const health = await healthService.check();
   const statusCode = health.status === 'healthy' ? 200 : 503;
-  res.status(statusCode).json(health);
+  res.status(statusCode).json({ ...health, requestId: req.correlationId });
 });
 
-// ── Swagger docs ───────────────────────────────────────────────────────────
+// ── 6. Swagger docs ────────────────────────────────────────────────────────
 app.use(
   '/api/docs',
   swaggerUi.serve,
@@ -60,19 +75,17 @@ app.use(
     swaggerOptions: { persistAuthorization: true },
   })
 );
-
-// Raw OpenAPI JSON (for tooling)
 app.get('/api/docs.json', (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   res.send(swaggerSpec);
 });
 
-// ── API Routes ─────────────────────────────────────────────────────────────
-const apiPrefix = process.env.API_PREFIX || '/api/v1';
+// ── 7. Global API rate limiter ─────────────────────────────────────────────
+app.use(apiPrefix, standardRateLimiter);
 
-// Phase 1 routes
+// ── 8. Routes — Phase 1 ───────────────────────────────────────────────────
 const authRoutes = require('./modules/auth/auth.routes');
-app.use(`${apiPrefix}/auth`, authRoutes);
+app.use(`${apiPrefix}/auth`, authRoutes);         // strict limiter applied inside
 
 const userRoutes = require('./modules/users/users.routes');
 app.use(`${apiPrefix}/users`, userRoutes);
@@ -83,7 +96,10 @@ app.use(`${apiPrefix}/stores`, storeRoutes);
 const productRoutes = require('./modules/products/products.routes');
 app.use(`${apiPrefix}/products`, productRoutes);
 
-// Phase 2 routes
+const categoryRoutes = require('./modules/categories/categories.routes');
+app.use(`${apiPrefix}/categories`, categoryRoutes);
+
+// ── 9. Routes — Phase 2 ────────────────────────────────────────────────────
 const inventoryRoutes = require('./modules/inventory/inventory.routes');
 app.use(`${apiPrefix}/inventory`, inventoryRoutes);
 
@@ -96,11 +112,10 @@ app.use(`${apiPrefix}/refunds`, refundRoutes);
 const auditRoutes = require('./modules/audit/audit.routes');
 app.use(`${apiPrefix}/audit`, auditRoutes);
 
-// Phase 3 routes
-const goldRateRoutes = require('./modules/gold-rates/gold-rate.routes');
-app.use(`${apiPrefix}/gold-rates`, goldRateRoutes);
+// ── 10. Routes — Phase 3 ───────────────────────────────────────────────────
+// (Gold rates removed)
 
-// ── Error handlers ─────────────────────────────────────────────────────────
+// ── 11. Error handlers (must be last) ─────────────────────────────────────
 app.use(notFoundHandler);
 app.use(errorHandler);
 

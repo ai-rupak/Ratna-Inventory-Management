@@ -53,7 +53,7 @@ class LedgerService {
     const summary = await prisma.inventoryLedger.groupBy({
       by: ['type'],
       where,
-      _sum: { weight: true, netGoldWeight: true },
+      _sum: { weight: true, stoneCount: true },
       _count: { id: true },
     });
     return summary;

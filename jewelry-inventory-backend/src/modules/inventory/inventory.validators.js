@@ -4,7 +4,6 @@ const receiveStockValidator = [
   body('productId').notEmpty().withMessage('productId is required'),
   body('totalWeight').isFloat({ gt: 0 }).withMessage('totalWeight must be positive'),
   body('totalStones').optional().isInt({ min: 0 }).withMessage('totalStones must be non-negative'),
-  body('stoneWeight').optional().isFloat({ min: 0 }).withMessage('stoneWeight must be non-negative'),
   body('notes').optional().isString(),
 ];
 
@@ -13,7 +12,6 @@ const allocateValidator = [
   body('storeId').notEmpty().withMessage('storeId is required'),
   body('weight').isFloat({ gt: 0 }).withMessage('weight must be positive'),
   body('stoneCount').optional().isInt({ min: 0 }),
-  body('stoneWeight').optional().isFloat({ min: 0 }),
   body('notes').optional().isString(),
 ];
 

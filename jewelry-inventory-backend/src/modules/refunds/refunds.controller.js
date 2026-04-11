@@ -25,6 +25,11 @@ class RefundsController {
         fromDate: req.query.fromDate,
         toDate: req.query.toDate,
       };
+
+      // STORE_ADMIN and CASHIER can only see their store's refunds
+      if (req.user.role !== 'SUPER_ADMIN') {
+        filters.storeId = req.user.storeId;
+      }
       const result = await refundService.getAllRefunds(filters, page, limit);
       paginatedResponse(res, result.data, result.pagination, 'Refunds retrieved');
     } catch (err) {
@@ -43,6 +48,13 @@ class RefundsController {
 
   async approveRefund(req, res, next) {
     try {
+      if (req.user.role !== 'SUPER_ADMIN') {
+        const existingRefund = await refundService.getRefundById(req.params.id);
+        if (existingRefund.invoice.storeId !== req.user.storeId) {
+          return res.status(403).json({ success: false, error: 'Access denied: Refund belongs to another store' });
+        }
+      }
+
       const refund = await approvalService.approveRefund(
         req.params.id,
         req.user.id,
@@ -56,6 +68,13 @@ class RefundsController {
 
   async rejectRefund(req, res, next) {
     try {
+      if (req.user.role !== 'SUPER_ADMIN') {
+        const existingRefund = await refundService.getRefundById(req.params.id);
+        if (existingRefund.invoice.storeId !== req.user.storeId) {
+          return res.status(403).json({ success: false, error: 'Access denied: Refund belongs to another store' });
+        }
+      }
+
       const refund = await approvalService.rejectRefund(
         req.params.id,
         req.user.id,

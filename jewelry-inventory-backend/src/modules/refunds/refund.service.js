@@ -2,10 +2,9 @@ const { prisma } = require('../../database/prisma/client');
 const pricingService = require('../billing/pricing.service');
 const { NotFoundError, BusinessLogicError } = require('../../common/constants/errors');
 
-const WEIGHT_TOLERANCE = parseFloat(process.env.WEIGHT_TOLERANCE_GRAMS || '0.01');
-
 /**
  * Refund Service — initiates refund by RFID lookup
+ * Weight is in RATI or CARAT as per the product's weightUnit.
  */
 class RefundService {
   /**
@@ -22,14 +21,16 @@ class RefundService {
 
   /**
    * Initiate a refund by RFID
+   *
    * @param {Object} data
-   * @param {string} data.rfid          - RFID of the item being returned
-   * @param {number} data.returnedWeight - measured weight at return
+   * @param {string} data.rfid             - RFID of the item being returned
+   * @param {number} data.returnedWeight   - weight being returned (in product's RATI/CARAT)
+   * @param {number} [data.returnedStones] - number of stones returned
    * @param {string} [data.reason]
-   * @param {string} data.createdBy      - userId
+   * @param {string} data.createdBy        - userId
    */
   async initiateRefund(data) {
-    const { rfid, returnedWeight, reason, createdBy } = data;
+    const { rfid, returnedWeight, returnedStones = 0, reason, createdBy } = data;
 
     // 1. Find the invoice item by RFID
     const invoiceItem = await prisma.invoiceItem.findUnique({
@@ -59,47 +60,48 @@ class RefundService {
       throw new BusinessLogicError('A refund is already in progress for this item');
     }
 
-    // 3. Weight tolerance check
-    const deviation = Math.abs(returnedWeight - invoiceItem.actualWeight);
-    const isWithinTolerance = deviation <= WEIGHT_TOLERANCE;
+    // 3. Validate returned weight does not exceed original
+    if (returnedWeight > invoiceItem.weight) {
+      throw new BusinessLogicError(
+        `Returned weight (${returnedWeight}) cannot exceed sold weight (${invoiceItem.weight})`
+      );
+    }
+    if (returnedStones > invoiceItem.stoneCount) {
+      throw new BusinessLogicError(
+        `Returned stones (${returnedStones}) cannot exceed sold stones (${invoiceItem.stoneCount})`
+      );
+    }
 
-    // 4. Compute refund amount using original price snapshot
+    // 4. Compute refund amount using original price snapshot (proportional to returned weight)
     const refundAmount = pricingService.calculateRefundAmount(invoiceItem, returnedWeight);
 
     const storeCode = invoiceItem.invoice.store.code;
     const refundNumber = await this.generateRefundNumber(storeCode);
 
-    // 5. Create refund record
-    // Auto-approve if within tolerance
-    const status = isWithinTolerance ? 'APPROVED' : 'PENDING';
-
+    // 5. Create refund record (auto-approve immediately since weight validation is already done)
     const refund = await prisma.refund.create({
       data: {
         refundNumber,
         invoiceId: invoiceItem.invoiceId,
         rfid,
         returnedWeight,
-        actualWeight: invoiceItem.actualWeight,
-        weightDeviation: parseFloat(deviation.toFixed(4)),
+        returnedStones,
         refundAmount: parseFloat(refundAmount.toFixed(2)),
-        status,
+        status: 'APPROVED',
         reason,
         createdBy,
-        approvedBy: isWithinTolerance ? createdBy : null,
-        approvedAt: isWithinTolerance ? new Date() : null,
+        approvedBy: createdBy,
+        approvedAt: new Date(),
       },
       include: { invoice: true },
     });
 
-    // 6. If auto-approved, complete the stock reversal immediately
-    if (isWithinTolerance) {
-      await this._completeRefundStockReversal(refund, invoiceItem, createdBy);
-    }
+    // 6. Complete stock reversal immediately
+    await this._completeRefundStockReversal(refund, invoiceItem, createdBy);
 
     return {
       ...refund,
-      isAutoApproved: isWithinTolerance,
-      weightTolerance: WEIGHT_TOLERANCE,
+      isAutoApproved: true,
     };
   }
 
@@ -133,7 +135,7 @@ class RefundService {
           data: {
             returnedWeight: storeInv.returnedWeight + refund.returnedWeight,
             availableWeight: storeInv.availableWeight + refund.returnedWeight,
-            returnedStones: storeInv.returnedStones + invoiceItem.stoneCount,
+            returnedStones: storeInv.returnedStones + (refund.returnedStones || 0),
           },
         });
       }
@@ -145,9 +147,7 @@ class RefundService {
           productId: invoiceItem.productId,
           toStoreId: invoice.storeId,
           weight: refund.returnedWeight,
-          stoneCount: invoiceItem.stoneCount,
-          stoneWeight: invoiceItem.stoneWeight,
-          netGoldWeight: refund.returnedWeight - invoiceItem.stoneWeight,
+          stoneCount: refund.returnedStones || 0,
           reference: refund.refundNumber,
           invoiceId: invoice.id,
           refundId: refund.id,
@@ -212,6 +212,9 @@ class RefundService {
     const where = {};
     if (filters.invoiceId) where.invoiceId = filters.invoiceId;
     if (filters.status) where.status = filters.status;
+    if (filters.storeId) {
+      where.invoice = { storeId: filters.storeId };
+    }
     if (filters.fromDate || filters.toDate) {
       where.createdAt = {};
       if (filters.fromDate) where.createdAt.gte = new Date(filters.fromDate);

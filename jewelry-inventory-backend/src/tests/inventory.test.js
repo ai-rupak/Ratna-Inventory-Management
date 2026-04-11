@@ -20,7 +20,7 @@ describe('Inventory', () => {
       const res = await request(app)
         .post('/api/v1/inventory/central')
         .set('Authorization', `Bearer ${global.adminToken}`)
-        .send({ productId, totalWeight: 50, totalStones: 5, stoneWeight: 2.5, notes: 'Test stock' });
+        .send({ productId, totalWeight: 50, totalStones: 5, notes: 'Test stock' });
 
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);

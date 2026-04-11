@@ -71,7 +71,7 @@ router.use(authenticate);
  */
 /**
  * @swagger
- * /api/v1/stores:
+ * /stores:
  *   post:
  *     summary: Create a new store
  *     tags: [Stores]
@@ -104,7 +104,7 @@ router.post(
  */
 /**
  * @swagger
- * /api/v1/stores:
+ * /stores:
  *   get:
  *     summary: Get all stores
  *     tags: [Stores]
@@ -150,7 +150,7 @@ router.get(
  */
 /**
  * @swagger
- * /api/v1/stores/{id}:
+ * /stores/{id}:
  *   get:
  *     summary: Get store by ID
  *     tags: [Stores]
@@ -181,7 +181,7 @@ router.get(
  */
 /**
  * @swagger
- * /api/v1/stores/{id}:
+ * /stores/{id}:
  *   patch:
  *     summary: Update store
  *     tags: [Stores]
@@ -215,7 +215,7 @@ router.patch(
  */
 /**
  * @swagger
- * /api/v1/stores/{id}:
+ * /stores/{id}:
  *   delete:
  *     summary: Delete store
  *     description: Delete store a store by ID (soft delete)
@@ -252,7 +252,7 @@ router.delete(
  */
 /**
  * @swagger
- * /api/v1/stores/{id}:
+ * /stores/{id}:
  *   delete:
  *     summary: Deactivate store
  *     tags: [Stores]
@@ -281,7 +281,7 @@ router.patch(
  */
 /**
  * @swagger
- * /api/v1/stores/{id}/stats:
+ * /stores/{id}/stats:
  *   get:
  *     summary: Get store statistics
  *     tags: [Stores]
@@ -306,3 +306,4 @@ router.get(
 );
 
 module.exports = router;
+

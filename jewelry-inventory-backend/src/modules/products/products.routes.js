@@ -18,13 +18,82 @@ const router = express.Router();
 router.use(authenticate);
 
 /**
+ * @swagger
+ * components:
+ *   schemas:
+ *     CreateProduct:
+ *       type: object
+ *       required:
+ *         - name
+ *         - categoryId
+ *         - weightUnit
+ *         - pricePerUnit
+ *         - hsnCode
+ *         - gstRate
+ *       properties:
+ *         sku:
+ *           type: string
+ *         name:
+ *           type: string
+ *         categoryId:
+ *           type: string
+ *         weightUnit:
+ *           type: string
+ *         pricePerUnit:
+ *           type: number
+ *         hsnCode:
+ *           type: string
+ *         gstRate:
+ *           type: number
+ *     UpdateProduct:
+ *       type: object
+ *       properties:
+ *         sku:
+ *           type: string
+ *         name:
+ *           type: string
+ *         categoryId:
+ *           type: string
+ *         weightUnit:
+ *           type: string
+ *         pricePerUnit:
+ *           type: number
+ *         hsnCode:
+ *           type: string
+ *         gstRate:
+ *           type: number
+ *         isActive:
+ *           type: boolean
+ */
+
+/**
  * @route   POST /api/v1/products
  * @desc    Create a new product
  * @access  SUPER_ADMIN, STORE_ADMIN
  */
+/**
+ * @swagger
+ * /products:
+ *   post:
+ *     summary: Create a new product
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateProduct'
+ *     responses:
+ *       201:
+ *         description: Product created successfully
+ *       403:
+ *         description: Forbidden
+ */
 router.post(
   '/',
-  requireRole(ROLES.SUPER_ADMIN, ROLES.STORE_ADMIN),
+  requireRole(ROLES.SUPER_ADMIN),
   createProductValidation,
   validate,
   productController.createProduct
@@ -37,7 +106,7 @@ router.post(
  */
 /**
  * @swagger
- * /api/v1/products/search:
+ * /products/search:
  *   get:
  *     summary: Search products
  *     tags: [Products]
@@ -60,6 +129,39 @@ router.get('/search', searchProductsValidation, validate, productController.sear
  * @desc    Get all products
  * @access  All authenticated users
  */
+/**
+ * @swagger
+ * /products:
+ *   get:
+ *     summary: Get all products
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: categoryId
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: weightUnit
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: isActive
+ *         schema:
+ *           type: boolean
+ *     responses:
+ *       200:
+ *         description: Products retrieved successfully
+ */
 router.get('/', getProductsValidation, validate, productController.getAllProducts);
 
 /**
@@ -76,7 +178,7 @@ router.get('/:id', productIdValidation, validate, productController.getProductBy
  */
 /**
  * @swagger
- * /api/v1/products/{id}:
+ * /products/{id}:
  *   patch:
  *     summary: Update product
  *     tags: [Products]
@@ -97,7 +199,7 @@ router.get('/:id', productIdValidation, validate, productController.getProductBy
  */
 router.patch(
   '/:id',
-  requireRole(ROLES.SUPER_ADMIN, ROLES.STORE_ADMIN),
+  requireRole(ROLES.SUPER_ADMIN),
   updateProductValidation,
   validate,
   productController.updateProduct
@@ -110,7 +212,7 @@ router.patch(
  */
 /**
  * @swagger
- * /api/v1/products/{id}:
+ * /products/{id}:
  *   delete:
  *     summary: Deactivate product
  *     tags: [Products]
@@ -139,7 +241,7 @@ router.delete(
  */
 /**
  * @swagger
- * /api/v1/products/{id}/activate:
+ * /products/{id}/activate:
  *   patch:
  *     summary: Activate product
  *     tags: [Products]
@@ -162,3 +264,7 @@ router.patch(
 );
 
 module.exports = router;
+
+
+
+

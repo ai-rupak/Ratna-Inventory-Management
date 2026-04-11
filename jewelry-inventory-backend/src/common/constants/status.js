@@ -32,11 +32,10 @@ const STATUS = {
     ADJUSTMENT: 'ADJUSTMENT',
   },
 
-  // Making Charge Types
-  MAKING_CHARGE: {
-    PER_GRAM: 'PER_GRAM',
-    FIXED: 'FIXED',
-    PERCENTAGE: 'PERCENTAGE',
+  // Weight unit types
+  WEIGHT_UNIT: {
+    RATI: 'RATI',
+    CARAT: 'CARAT',
   },
 };
 

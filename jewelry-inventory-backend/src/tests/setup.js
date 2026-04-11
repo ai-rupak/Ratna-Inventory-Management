@@ -24,15 +24,26 @@ global.getAuthToken = async (email, password) => {
   const res = await request(app)
     .post('/api/v1/auth/login')
     .send({ email, password });
+  
+  if (res.status !== 200) {
+    throw new Error(`Login failed for ${email}: ${JSON.stringify(res.body)}`);
+  }
+  
   return res.body.data?.tokens?.accessToken || res.body.data?.accessToken;
 };
 
 global.adminToken = null;
 global.storeAdminToken = null;
 global.cashierToken = null;
+global.testCategoryId = null;
 
 beforeAll(async () => {
   global.adminToken = await getAuthToken('admin@jewelry.com', 'Admin@123');
   global.storeAdminToken = await getAuthToken('storeadmin@jewelry.com', 'StoreAdmin@123');
   global.cashierToken = await getAuthToken('cashier@jewelry.com', 'Cashier@123');
+
+  // Fetch a real category ID for product tests
+  const { prisma } = require('../database/prisma/client');
+  const category = await prisma.category.findFirst({ where: { isActive: true } });
+  global.testCategoryId = category?.id || null;
 });

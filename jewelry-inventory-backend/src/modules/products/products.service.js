@@ -8,11 +8,11 @@ class ProductService {
   /**
    * Generate unique SKU
    */
-  generateSku(category, purity) {
-    const categoryPrefix = category.substring(0, 4).toUpperCase().replace(/[^A-Z]/g, '');
-    const purityCode = purity.replace(/[^A-Z0-9]/g, '');
+  generateSku(categoryName, weightUnit) {
+    const categoryPrefix = categoryName.substring(0, 4).toUpperCase().replace(/[^A-Z]/g, '');
+    const unitCode = weightUnit || 'CAR';
     const timestamp = Date.now().toString().slice(-6);
-    return `${categoryPrefix}-${purityCode}-${timestamp}`;
+    return `${categoryPrefix}-${unitCode}-${timestamp}`;
   }
 
   /**
@@ -28,13 +28,17 @@ class ProductService {
       if (existingProduct) {
         throw new ConflictError('SKU already exists');
       }
-    } else {
-      // Generate SKU if not provided
-      data.sku = this.generateSku(data.category, data.purity);
+    }
+    if (!data.sku) {
+      // Generate SKU if not provided - fetch Category for name
+      const categoryRec = await prisma.category.findUnique({ where: { id: data.categoryId } });
+      if (!categoryRec) throw new NotFoundError('Category');
+      data.sku = this.generateSku(categoryRec.name, data.weightUnit);
     }
 
     const product = await prisma.product.create({
       data,
+      include: { category: true }
     });
 
     return product;
@@ -46,6 +50,7 @@ class ProductService {
   async getProductById(id) {
     const product = await prisma.product.findUnique({
       where: { id },
+      include: { category: true }
     });
 
     if (!product) {
@@ -61,16 +66,22 @@ class ProductService {
   async getAllProducts(page = 1, limit = 20, filters = {}) {
     const where = {};
 
-    if (filters.category) {
-      where.category = { contains: filters.category, mode: 'insensitive' };
+    if (filters.categoryId) {
+      where.categoryId = filters.categoryId;
     }
 
-    if (filters.purity) {
-      where.purity = filters.purity;
+    if (filters.weightUnit) {
+      where.weightUnit = filters.weightUnit;
     }
 
     if (filters.isActive !== undefined) {
       where.isActive = filters.isActive;
+    }
+
+    if (filters.storeId) {
+      where.storeInventories = {
+        some: { storeId: filters.storeId }
+      };
     }
 
     const skip = (page - 1) * limit;
@@ -81,6 +92,7 @@ class ProductService {
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
+        include: { category: true }
       }),
       prisma.product.count({ where }),
     ]);
@@ -99,21 +111,30 @@ class ProductService {
   /**
    * Search products
    */
-  async searchProducts(searchTerm) {
+  async searchProducts(searchTerm, storeId = null) {
     if (!searchTerm || searchTerm.trim() === '') {
       return [];
     }
 
+    const where = {
+      OR: [
+        { name: { contains: searchTerm, mode: 'insensitive' } },
+        { sku: { contains: searchTerm, mode: 'insensitive' } },
+        { category: { name: { contains: searchTerm, mode: 'insensitive' } } },
+      ],
+      isActive: true,
+    };
+
+    if (storeId) {
+      where.storeInventories = {
+        some: { storeId }
+      };
+    }
+
     return prisma.product.findMany({
-      where: {
-        OR: [
-          { name: { contains: searchTerm, mode: 'insensitive' } },
-          { sku: { contains: searchTerm, mode: 'insensitive' } },
-          { category: { contains: searchTerm, mode: 'insensitive' } },
-        ],
-        isActive: true,
-      },
+      where,
       take: 20,
+      include: { category: true }
     });
   }
 
@@ -143,6 +164,7 @@ class ProductService {
     return prisma.product.update({
       where: { id },
       data,
+      include: { category: true }
     });
   }
 
@@ -189,24 +211,26 @@ class ProductService {
   /**
    * Get products by category
    */
-  async getProductsByCategory(category) {
+  async getProductsByCategory(categoryId) {
     return prisma.product.findMany({
       where: {
-        category: { contains: category, mode: 'insensitive' },
+        categoryId,
         isActive: true,
       },
+      include: { category: true }
     });
   }
 
   /**
-   * Get products by purity
+   * Get products by weight unit
    */
-  async getProductsByPurity(purity) {
+  async getProductsByWeightUnit(weightUnit) {
     return prisma.product.findMany({
       where: {
-        purity,
+        weightUnit,
         isActive: true,
       },
+      include: { category: true }
     });
   }
 }
